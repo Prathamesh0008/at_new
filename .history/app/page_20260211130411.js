@@ -690,64 +690,6 @@ const startShift = async () => {
   // ✅ Now shift is valid
   setIsLoggedIn(true);   // 👈 MOVE HERE
 
-
-
-  // continue normal shift start...
-
-
-  const now = new Date();
-  console.log('Starting shift at:', now.toISOString());
-  
-  setShiftStarted(true);
-  setShiftStartTime(now);
-  
-  // Save shift to localStorage
-  const shiftData = {
-    empId,
-    empName,
-    empEmail,
-    empPhone,
-    shiftStartTime: now.toISOString(),
-    totalBreakTime: 0
-  };
-  saveShiftToStorage(shiftData);
-  
-  const newRecord = {
-    empId,
-    empName,
-    action: 'SHIFT_START',
-    timestamp: now.toISOString(),
-    date: now.toLocaleDateString('en-IN'),
-    time: now.toLocaleTimeString('en-IN', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true 
-    }),
-    shiftType: 'Regular',
-  };
-  
-  // Add to activity history
-  addActivity({
-    action: 'SHIFT_START',
-    message: `Shift started at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-    timestamp: now,
-    type: 'success'
-  });
-  
-  // Save to local state
-  setAttendanceData(prev => [...prev, newRecord]);
-  
-  // ✅ IMMEDIATELY SAVE TO FIREBASE
-  try {
-    await saveAttendanceToFirebase(newRecord);
-    console.log('✅ Shift start saved to Firebase');
-  } catch (error) {
-    console.error('❌ Failed to save shift start to Firebase:', error);
-  }
-  
-  console.log('SHIFT_START record added:', newRecord);
-};
 // End Shift - with Firebase sync
 const endShift = async () => {
   if (!shiftStarted) {
@@ -2231,8 +2173,7 @@ if (savedBreak) {
                 {isLoggedIn && (
   <button
     onClick={downloadExcel}
-   className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-3 rounded-lg font-semibold flex items-center space-x-2 transition-all hover:scale-105"
-
+    className="bg-gradient-to-r from-emerald-600 to-teal-600 ..."
   >
     <Download className="w-5 h-5" />
     <span>Download Report</span>

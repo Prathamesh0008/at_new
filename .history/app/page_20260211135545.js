@@ -675,21 +675,21 @@ useEffect(() => {
 const startShift = async () => {
   if (!empId) {
     alert("Please select employee");
+    setIsLoggedIn(true);
+
     return;
   }
 
+  // 🔐 IP CHECK
   if (!ALLOWED_IPS.includes(userIP)) {
-    addActivity({
-      action: "ACCESS_DENIED",
-      message: `Unauthorized login attempt from IP ${userIP}`,
-      type: "warning"
-    });
-    return;
-  }
+  addActivity({
+    action: "ACCESS_DENIED",
+    message: `Unauthorized login attempt from IP ${userIP}`,
+    type: "warning"
+  });
 
-  // ✅ Now shift is valid
-  setIsLoggedIn(true);   // 👈 MOVE HERE
-
+  return;
+}
 
 
   // continue normal shift start...
@@ -2231,8 +2231,7 @@ if (savedBreak) {
                 {isLoggedIn && (
   <button
     onClick={downloadExcel}
-   className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-3 rounded-lg font-semibold flex items-center space-x-2 transition-all hover:scale-105"
-
+    className="bg-gradient-to-r from-emerald-600 to-teal-600 ..."
   >
     <Download className="w-5 h-5" />
     <span>Download Report</span>

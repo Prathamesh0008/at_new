@@ -675,21 +675,21 @@ useEffect(() => {
 const startShift = async () => {
   if (!empId) {
     alert("Please select employee");
+    setIsLoggedIn(true);
+
     return;
   }
 
+  // 🔐 IP CHECK
   if (!ALLOWED_IPS.includes(userIP)) {
-    addActivity({
-      action: "ACCESS_DENIED",
-      message: `Unauthorized login attempt from IP ${userIP}`,
-      type: "warning"
-    });
-    return;
-  }
+  addActivity({
+    action: "ACCESS_DENIED",
+    message: `Unauthorized login attempt from IP ${userIP}`,
+    type: "warning"
+  });
 
-  // ✅ Now shift is valid
-  setIsLoggedIn(true);   // 👈 MOVE HERE
-
+  return;
+}
 
 
   // continue normal shift start...
@@ -753,6 +753,7 @@ const endShift = async () => {
   if (!shiftStarted) {
     alert('Shift has not been started');
     setIsLoggedIn(false);
+
     return;
   }
 
@@ -1196,10 +1197,6 @@ const endBreak = () => {
   };
 
  const downloadExcel = async () => {
-  if (!isLoggedIn) {
-    alert("⚠️ You must start your shift before downloading report.");
-    return;
-  }
   const password = prompt('Enter admin password:');
   if (password !== ADMIN_PASSWORD) {
     alert('Incorrect password');
@@ -2228,17 +2225,13 @@ if (savedBreak) {
                   <span>Apply Leave</span>
                 </button>
 
-                {isLoggedIn && (
-  <button
-    onClick={downloadExcel}
-   className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-3 rounded-lg font-semibold flex items-center space-x-2 transition-all hover:scale-105"
-
-  >
-    <Download className="w-5 h-5" />
-    <span>Download Report</span>
-  </button>
-)}
-
+                <button
+                  onClick={downloadExcel}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-3 rounded-lg font-semibold flex items-center space-x-2 transition-all hover:scale-105"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Download Report</span>
+                </button>
                 
                 <button
                   onClick={sendCustomEmailToEmployee}

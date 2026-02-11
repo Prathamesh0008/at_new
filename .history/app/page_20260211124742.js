@@ -265,8 +265,7 @@ const ALLOWED_IPS = [
   "192.168.1.32",
   "192.168.1.9",
   "192.168.1.49",
-  "192.168.1.41"
-
+  
      // Localhost IPv4
 ];
 
@@ -294,13 +293,13 @@ const employees = [
     email: "Payalnalwade73@gmail.com",
     phone: "+91 9876543212"
   },
-  // { 
-  //   id: "NTS-004", 
-  //   name: "Vaishnavi GHODVINDE", 
-  //   shift: "9:00 AM - 6:00 PM",
-  //   email: "vaishnavighodvinde@gmail.com",
-  //   phone: "+91 9876543213"
-  // },
+  { 
+    id: "NTS-004", 
+    name: "Vaishnavi GHODVINDE", 
+    shift: "9:00 AM - 6:00 PM",
+    email: "vaishnavighodvinde@gmail.com",
+    phone: "+91 9876543213"
+  },
   { 
     id: "NTS-005", 
     name: "RUSHIKESH ANDHALE", 
@@ -326,15 +325,8 @@ const employees = [
     id: "NTS-008", 
     name: "Chotelal Singh", 
     shift: "9:00 AM - 6:00 PM",
-    email: "schhotelal405@gmail.com",
-    phone: "+91 8828183327"
-  },
-  { 
-    id: "NTS-009", 
-    name: "Sakshi Rajbhar", 
-    shift: "9:00 AM - 6:00 PM",
-    email: "rajbharsakshi714@gmail.com",
-    phone: "+91 8591738995"
+    email: "chotelal.singh@novatechsciences.com",
+    phone: "+91 9876543217"
   },
 ];
 
@@ -434,8 +426,6 @@ export default function HomePage() {
     dailySummary: true
   });
   const [userIP, setUserIP] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
 
 useEffect(() => {
   const fetchIP = async () => {
@@ -678,18 +668,16 @@ const startShift = async () => {
     return;
   }
 
+  // 🔐 IP CHECK
   if (!ALLOWED_IPS.includes(userIP)) {
-    addActivity({
-      action: "ACCESS_DENIED",
-      message: `Unauthorized login attempt from IP ${userIP}`,
-      type: "warning"
-    });
-    return;
-  }
+  addActivity({
+    action: "ACCESS_DENIED",
+    message: `Unauthorized login attempt from IP ${userIP}`,
+    type: "warning"
+  });
 
-  // ✅ Now shift is valid
-  setIsLoggedIn(true);   // 👈 MOVE HERE
-
+  return;
+}
 
 
   // continue normal shift start...
@@ -752,7 +740,6 @@ const startShift = async () => {
 const endShift = async () => {
   if (!shiftStarted) {
     alert('Shift has not been started');
-    setIsLoggedIn(false);
     return;
   }
 
@@ -1196,10 +1183,6 @@ const endBreak = () => {
   };
 
  const downloadExcel = async () => {
-  if (!isLoggedIn) {
-    alert("⚠️ You must start your shift before downloading report.");
-    return;
-  }
   const password = prompt('Enter admin password:');
   if (password !== ADMIN_PASSWORD) {
     alert('Incorrect password');
@@ -2228,17 +2211,13 @@ if (savedBreak) {
                   <span>Apply Leave</span>
                 </button>
 
-                {isLoggedIn && (
-  <button
-    onClick={downloadExcel}
-   className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-3 rounded-lg font-semibold flex items-center space-x-2 transition-all hover:scale-105"
-
-  >
-    <Download className="w-5 h-5" />
-    <span>Download Report</span>
-  </button>
-)}
-
+                <button
+                  onClick={downloadExcel}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-3 rounded-lg font-semibold flex items-center space-x-2 transition-all hover:scale-105"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Download Report</span>
+                </button>
                 
                 <button
                   onClick={sendCustomEmailToEmployee}

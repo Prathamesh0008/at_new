@@ -675,21 +675,21 @@ useEffect(() => {
 const startShift = async () => {
   if (!empId) {
     alert("Please select employee");
+    setIsLoggedIn(true);
+
     return;
   }
 
+  // 🔐 IP CHECK
   if (!ALLOWED_IPS.includes(userIP)) {
-    addActivity({
-      action: "ACCESS_DENIED",
-      message: `Unauthorized login attempt from IP ${userIP}`,
-      type: "warning"
-    });
-    return;
-  }
+  addActivity({
+    action: "ACCESS_DENIED",
+    message: `Unauthorized login attempt from IP ${userIP}`,
+    type: "warning"
+  });
 
-  // ✅ Now shift is valid
-  setIsLoggedIn(true);   // 👈 MOVE HERE
-
+  return;
+}
 
 
   // continue normal shift start...
