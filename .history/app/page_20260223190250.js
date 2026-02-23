@@ -677,20 +677,12 @@ const startShift = async () => {
     return;
   }
 
- // 🔐 IP Restriction Check (Improved)
-if (
-  !userIP.startsWith("192.168.") &&   // Office LAN
-  !userIP.startsWith("110.226.") &&   // Office ISP Public IP
-  userIP !== "127.0.0.1" &&
-  userIP !== "::1"
-) {
+  if (!ALLOWED_IPS.includes(userIP)) {
   addActivity({
     action: "ACCESS_DENIED",
     message: `Unauthorized login attempt from IP ${userIP}`,
     type: "warning"
   });
-
-  alert("❌ Access Denied: Unauthorized Network");
   return;
 }
 
