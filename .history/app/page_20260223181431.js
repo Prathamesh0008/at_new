@@ -671,6 +671,7 @@ useEffect(() => {
   };
 
 
+
 const startShift = async () => {
   if (!empId) {
     alert("Please select employee");
