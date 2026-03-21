@@ -1,75 +1,74 @@
-// /contexts/AuthContext.js
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
-import { employees, ROLES } from '@/utils/constants';
+import { createContext, useContext, useState } from 'react';
+import { employees } from '@/utils/constants';
+import { normalizeRole } from '@/utils/roles';
 
-// Create context
 const AuthContext = createContext();
 
-// Auth Provider
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+const getStoredUser = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
 
-  useEffect(() => {
-    console.log('🔍 AuthContext: Checking localStorage...');
-    
-    // Get user from localStorage
-    const storedUser = localStorage.getItem('user');
-    
-    if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        console.log('✅ AuthContext: Found user:', userData.name);
-        setUser(userData);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('❌ AuthContext: Error parsing user:', error);
-        localStorage.removeItem('user');
-      }
+  const storedUser = localStorage.getItem('user');
+  if (!storedUser) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(storedUser);
+    if (!parsed?.id) return parsed;
+
+    const matchedEmployee = employees.find((emp) => emp.id === parsed.id);
+    if (!matchedEmployee) {
+      return { ...parsed, role: normalizeRole(parsed.role) };
     }
-    
-    console.log('🏁 AuthContext: Loading complete');
-    setLoading(false);
-  }, []);
+
+    return {
+      ...parsed,
+      role: normalizeRole(matchedEmployee.role || parsed.role),
+    };
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+};
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(() => getStoredUser());
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredUser()));
+  const [loading] = useState(false);
 
   const login = (employeeId, password) => {
-    console.log('🔑 Login attempt for:', employeeId);
-    
-    // Find employee in the imported employees array
-    const employee = employees.find(emp => 
-      emp.id === employeeId && emp.password === password
+    const normalizedEmployeeId = String(employeeId || '').trim().toUpperCase();
+    const employee = employees.find(
+      (emp) => String(emp.id || '').trim().toUpperCase() === normalizedEmployeeId && emp.password === password
     );
-    
-    if (employee) {
-      console.log('✅ Login successful for:', employee.name);
-      
-      // Create user object without password
-      const userData = {
-        id: employee.id,
-        name: employee.name,
-        email: employee.email,
-        phone: employee.phone,
-        shift: employee.shift,
-        role: employee.role,
-        department: employee.department
-      };
-      
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      return { success: true, user: userData };
+
+    if (!employee) {
+      return { success: false, message: 'Invalid Employee ID or password' };
     }
-    
-    console.log('❌ Login failed');
-    return { success: false, message: 'Invalid Employee ID or password' };
+
+    const userData = {
+      id: employee.id,
+      name: employee.name,
+      email: employee.email,
+      phone: employee.phone,
+      shift: employee.shift,
+      role: normalizeRole(employee.role),
+      department: employee.department,
+      dateOfJoining: employee.dateOfJoining || null,
+    };
+
+    setUser(userData);
+    setIsAuthenticated(true);
+    localStorage.setItem('user', JSON.stringify(userData));
+
+    return { success: true, user: userData };
   };
 
   const logout = () => {
-    console.log('👋 Logging out:', user?.name);
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('user');
@@ -80,17 +79,12 @@ export function AuthProvider({ children }) {
     isAuthenticated,
     login,
     logout,
-    loading
+    loading,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// Custom hook
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

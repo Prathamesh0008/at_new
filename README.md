@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+﻿# Attendance Portal (Deployment Ready)
 
-## Getting Started
+Unified employee portal built on Next.js 16.
 
-First, run the development server:
+## Features
+- Attendance module (start/end shift, break tracking)
+- Leave workflow (multi-level approval)
+- Task assignment and worksheet flow
+- Reimbursements and attendance corrections
+- Manager dashboard with exports (Excel/PDF)
+- Email notifications (real or simulated mode)
 
+## Tech Stack
+- Next.js 16 (App Router)
+- React 19
+- Firebase Firestore
+- Nodemailer
+
+## 1) Local Setup
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+Open: `http://localhost:3000`
+
+## 2) Environment Variables
+Set these in `.env.local` and in deployment platform env settings.
+
+Required for Firebase:
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
+
+Optional for email sending:
+- `EMAIL_USER`
+- `EMAIL_PASSWORD`
+
+If email vars are missing, `/api/send-email` runs in simulated mode (safe fallback).
+
+## 3) Quality Checks
+```bash
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 4) Production Run
+```bash
+npm run build
+npm run start
+```
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 5) Deployment (Vercel)
+1. Push repository to GitHub.
+2. Import project in Vercel.
+3. Add all env vars from `.env.example`.
+4. Deploy.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 6) Health Check
+- Endpoint: `/api/health`
+- Example response:
+```json
+{ "ok": true, "service": "attendanceportal", "timestamp": "..." }
+```
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+- Home route (`/`) is the unified portal.
+- Legacy snapshots under `.history/` are ignored by lint.

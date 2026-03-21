@@ -1,22 +1,25 @@
 // components/Layout.js - UPDATE THIS (remove html/body)
 'use client';
-import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Navbar from './Navbar';
 import ModelSidebar from './ModelPortal/ModelSidebar';
 import UserSidebar from './UserPortal/UserSidebar';
 
 export default function Layout({ children }) {
-  const [userRole, setUserRole] = useState('user');
   const pathname = usePathname();
-  
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      setUserRole(user.role || 'user');
+  let userRole = 'user';
+
+  if (typeof window !== 'undefined') {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        const user = JSON.parse(storedUser);
+        userRole = user.role || 'user';
+      }
+    } catch {
+      userRole = 'user';
     }
-  }, [pathname]);
+  }
   
   return (
     <>

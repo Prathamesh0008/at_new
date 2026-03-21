@@ -13,7 +13,8 @@ export const employees = [
     phone: "+91 9876543210",
     role: "agent",
     department: "Operations",
-    password: "prathamesh123"
+    password: "prathamesh123",
+    dateOfJoining: "2025-12-15"
   },
   { 
     id: "NTS-002", 
@@ -23,77 +24,85 @@ export const employees = [
     phone: "+91 9876543211",
     role: "agent",
     department: "Operations",
-    password: "adarsh123"
+    password: "adarsh123",
+    dateOfJoining: "2026-01-10"
   },
   { 
     id: "NTS-003", 
     name: "Payal Nalavade", 
-    shift: "9:00 AM - 6:00 PM",
+    shift: "10:00 AM - 7:00 PM",
     email: "Payalnalwade73@gmail.com",
     phone: "+91 9876543212",
     role: "agent",
     department: "Operations",
-    password: "payal123"
+    password: "payal123",
+    dateOfJoining: "2025-11-20"
   },
   { 
     id: "NTS-004", 
     name: "Vaishnavi GHODVINDE", 
-    shift: "9:00 AM - 6:00 PM",
+    shift: "10:00 AM - 7:00 PM",
     email: "vaishnavighodvinde@gmail.com",
     phone: "+91 9876543213",
     role: "agent",
     department: "Operations",
-    password: "vaishnavi123"
+    password: "vaishnavi123",
+    dateOfJoining: "2026-02-01"
   },
   { 
     id: "NTS-005", 
     name: "RUSHIKESH ANDHALE", 
-    shift: "9:00 AM - 6:00 PM",
+    shift: "10:00 AM - 7:00 PM",
     email: "rushikeshandhale1010@gmail.com",
     phone: "+91 9876543214",
     role: "agent",
     department: "Operations",
-    password: "rushikesh123"
+    password: "rushikesh123",
+    dateOfJoining: "2026-01-25"
   },
   { 
     id: "NTS-006", 
     name: "Upasana Patil", 
-    shift: "9:00 AM - 6:00 PM",
+    shift: "10:00 AM - 7:00 PM",
     email: "patilupasana27@gmail.com",
     phone: "+91 9876543215",
     role: "agent",
     department: "Operations",
-    password: "upasana123"
+    password: "upasana123",
+    dateOfJoining: "2025-12-05"
   },
   { 
     id: "NTS-007", 
     name: "Prajakta Dhande", 
-    shift: "9:00 AM - 6:00 PM",
+    shift: "10:00 AM - 7:00 PM",
     email: "dhandeprajakta123@gmail.com",
     phone: "+91 9876543216",
     role: "agent",
     department: "Operations",
-    password: "prajakta123"
+    password: "prajakta123",
+    dateOfJoining: "2026-02-18"
   },
   { 
     id: "NTS-008", 
     name: "Chotelal Singh", 
-    shift: "9:00 AM - 6:00 PM",
+    shift: "10:00 AM - 7:00 PM",
     email: "chotelal.singh@novatechsciences.com",
     phone: "+91 9876543217",
     role: "agent",
     department: "Operations",
-    password: "chotelal123"
+    password: "chotelal123",
+    dateOfJoining: "2025-10-30"
   },
   { 
     id: "NTS-MGR", 
-    name: "Prathamesh Shinde (Manager)", 
+    name: "Prathamesh Shinde ", 
     shift: "10:00 AM - 7:00 PM",
     email: "sprathamesh581@gmail.com",
     phone: "+91 9876543210",
     role: "manager",
     department: "Management",
-    password: "manager123"
+    password: "manager123",
+    dateOfJoining: "2024-07-01"
   }
 ];
 
