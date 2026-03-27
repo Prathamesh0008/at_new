@@ -36,7 +36,7 @@ export const employees = [
     role: "agent",
     department: "Operations",
     password: "payal123",
-    dateOfJoining: "2025-11-20"
+    dateOfJoining: "2025-10-10"
   },
   { 
     id: "NTS-004", 
@@ -47,18 +47,18 @@ export const employees = [
     role: "agent",
     department: "Operations",
     password: "vaishnavi123",
-    dateOfJoining: "2026-02-01"
+    dateOfJoining: "2025-10-10"
   },
   { 
     id: "NTS-005", 
     name: "RUSHIKESH ANDHALE", 
     shift: "10:00 AM - 7:00 PM",
     email: "rushikeshandhale1010@gmail.com",
-    phone: "+91 9876543214",
+    phone: "+91 9867006814",
     role: "agent",
     department: "Operations",
     password: "rushikesh123",
-    dateOfJoining: "2026-01-25"
+    dateOfJoining: "2025-10-10"
   },
   { 
     id: "NTS-006", 
@@ -69,7 +69,7 @@ export const employees = [
     role: "agent",
     department: "Operations",
     password: "upasana123",
-    dateOfJoining: "2025-12-05"
+    dateOfJoining: "2025-10-10"
   },
   { 
     id: "NTS-007", 
@@ -80,7 +80,7 @@ export const employees = [
     role: "agent",
     department: "Operations",
     password: "prajakta123",
-    dateOfJoining: "2026-02-18"
+    dateOfJoining: "2025-10-10"
   },
   { 
     id: "NTS-008", 
@@ -91,7 +91,7 @@ export const employees = [
     role: "agent",
     department: "Operations",
     password: "chotelal123",
-    dateOfJoining: "2025-10-30"
+    dateOfJoining: "2025-11-10"
   },
   { 
     id: "NTS-MGR", 

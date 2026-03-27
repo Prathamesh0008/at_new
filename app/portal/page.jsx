@@ -53,11 +53,21 @@ import {
 } from "@/lib/portal-helpers";
 import { fetchAllAttendanceData, fetchAllBreaksData } from "@/lib/firebase-helpers";
 
-const getToday = () => new Date().toISOString().slice(0, 10);
+const getToday = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+const toLocalDateKey = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 const formatDate = (date) => (date ? new Date(date).toLocaleDateString("en-IN") : "-");
 const toMonthInputValue = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 const FIXED_SHIFT_LABEL = "10:00 AM - 7:00 PM";
 const SHIFT_START_HOUR = 10;
+const SHIFT_END_HOUR = 19;
+const SHIFT_END_MINUTE = 0;
 const AUTO_SYNC_MS = 15000;
 const LIVE_BREAK_POLL_MS = 4000;
 const formatDuration = (msValue = 0) => {
@@ -74,6 +84,22 @@ const BREAK_TARGET_MINUTES = {
   Evening: 15,
   Breather: 10,
 };
+const DAILY_QUOTES = [
+  "Small consistent progress beats perfect plans.",
+  "Focus on the next right step, not the whole staircase.",
+  "Discipline is choosing what you want most over what you want now.",
+  "Your work today builds your confidence tomorrow.",
+  "Great teams are built on dependable daily effort.",
+  "Keep going. Momentum is your superpower.",
+  "Done with care is better than rushed and repeated.",
+  "Be proud of progress, even when it looks small.",
+  "Clarity comes from action, not overthinking.",
+  "Strong habits make difficult days easier.",
+  "Learn fast, improve faster, stay kind.",
+  "You do not need to be perfect to be effective.",
+  "Consistency creates results that motivation cannot sustain.",
+  "Start where you are, use what you have, do what you can.",
+];
 const notificationMeta = {
   task: { label: "Task", icon: BriefcaseBusiness, tone: "bg-blue-100 text-blue-700" },
   leave: { label: "Leave", icon: CalendarClock, tone: "bg-amber-100 text-amber-700" },
@@ -188,14 +214,15 @@ export default function PortalPage() {
   const { user, isAuthenticated, loading, logout } = useAuth();
   const role = isManager(user?.role) ? "manager" : "employee";
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [theme, setTheme] = useState("light");
+  const [theme, setTheme] = useState("dark");
   const [refreshToken, setRefreshToken] = useState(0);
   const [busy, setBusy] = useState(false);
   const [loadingAction, setLoadingAction] = useState("");
   const [message, setMessage] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showDailyQuoteModal, setShowDailyQuoteModal] = useState(false);
   const [miniCalendarDate, setMiniCalendarDate] = useState(new Date());
-  const [notificationFilter, setNotificationFilter] = useState("all");
+  const [notificationFilter, setNotificationFilter] = useState("unread");
   const [notificationsBusy, setNotificationsBusy] = useState(false);
   const notificationsRef = useRef(null);
   const autoShiftCloseKeyRef = useRef("");
@@ -281,6 +308,12 @@ export default function PortalPage() {
     [leaveRows, user?.id]
   );
   const saturdayHolidaySet = useMemo(() => new Set(saturdayHolidayDates), [saturdayHolidayDates]);
+  const dailyQuote = useMemo(() => {
+    const todayKey = getToday();
+    const seed = todayKey.split("-").reduce((sum, piece) => sum + Number(piece || 0), 0);
+    const index = seed % DAILY_QUOTES.length;
+    return DAILY_QUOTES[index];
+  }, []);
 
   const leaveStatusByDate = useMemo(() => {
     const priority = { approved: 3, pending: 2, rejected: 1 };
@@ -386,11 +419,42 @@ export default function PortalPage() {
     const savedBreak = localStorage.getItem(`portal_break_${user.id}`);
     const savedBreakStartAt = localStorage.getItem(`portal_break_started_at_${user.id}`);
     const savedBreakExceededMarker = localStorage.getItem(`portal_break_exceeded_${user.id}`);
-    setShiftRunning(saved === "running");
-    setShiftStartAt(savedStartAt ? Number(savedStartAt) : null);
-    setActiveBreakType(savedBreak || "");
-    setBreakStartAt(savedBreakStartAt ? Number(savedBreakStartAt) : null);
-    setBreakExceededMarker(savedBreakExceededMarker || "");
+    const parsedShiftStartAt = savedStartAt ? Number(savedStartAt) : null;
+    const hasValidShiftStart = Number.isFinite(parsedShiftStartAt) && parsedShiftStartAt > 0;
+    const isStaleShift =
+      saved === "running" &&
+      hasValidShiftStart &&
+      toLocalDateKey(parsedShiftStartAt) !== getToday();
+
+    if (isStaleShift) {
+      localStorage.setItem(`portal_shift_${user.id}`, "stopped");
+      localStorage.removeItem(`portal_shift_started_at_${user.id}`);
+      localStorage.removeItem(`portal_break_${user.id}`);
+      localStorage.removeItem(`portal_break_started_at_${user.id}`);
+      localStorage.removeItem(`portal_break_exceeded_${user.id}`);
+      setShiftRunning(false);
+      setShiftStartAt(null);
+      setActiveBreakType("");
+      setBreakStartAt(null);
+      setBreakExceededMarker("");
+      setFlash("Previous day shift was auto-reset. Please start a new shift.");
+      return;
+    }
+
+    const shiftIsRunning = saved === "running" && hasValidShiftStart;
+    const parsedBreakStartAt = savedBreakStartAt ? Number(savedBreakStartAt) : null;
+    const breakValidForToday =
+      shiftIsRunning &&
+      savedBreak &&
+      Number.isFinite(parsedBreakStartAt) &&
+      parsedBreakStartAt > 0 &&
+      toLocalDateKey(parsedBreakStartAt) === getToday();
+
+    setShiftRunning(shiftIsRunning);
+    setShiftStartAt(shiftIsRunning ? parsedShiftStartAt : null);
+    setActiveBreakType(breakValidForToday ? savedBreak : "");
+    setBreakStartAt(breakValidForToday ? parsedBreakStartAt : null);
+    setBreakExceededMarker(breakValidForToday ? (savedBreakExceededMarker || "") : "");
   }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
@@ -466,9 +530,21 @@ export default function PortalPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!isAuthenticated || role !== "employee" || !user?.id) {
+      setShowDailyQuoteModal(false);
+      return;
+    }
+
+    const todayKey = getToday();
+    const seenKey = `portal_daily_quote_seen_${user.id}_${todayKey}`;
+    const alreadySeen = localStorage.getItem(seenKey);
+    setShowDailyQuoteModal(!alreadySeen);
+  }, [isAuthenticated, role, user?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const savedTheme = localStorage.getItem("portal_theme");
-    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
-    const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
+    const initialTheme = savedTheme || "dark";
     setTheme(initialTheme);
     document.documentElement.classList.toggle("dark", initialTheme === "dark");
   }, []);
@@ -819,10 +895,10 @@ export default function PortalPage() {
 
     const now = new Date(clockTick);
     const cutoff = new Date(now);
-    cutoff.setHours(19, 30, 0, 0);
+    cutoff.setHours(SHIFT_END_HOUR, SHIFT_END_MINUTE, 0, 0);
     if (now.getTime() < cutoff.getTime()) return;
 
-    const dateKey = now.toISOString().slice(0, 10);
+    const dateKey = getToday();
     if (autoShiftCloseKeyRef.current === dateKey) return;
     autoShiftCloseKeyRef.current = dateKey;
 
@@ -844,7 +920,7 @@ export default function PortalPage() {
         if (!response.ok) throw new Error("Failed to auto end shift");
         saveShiftState(false);
         saveBreakState("");
-        setFlash("Shift auto-ended at 7:30 PM.");
+        setFlash("Shift auto-ended at 7:00 PM.");
         refresh();
       } catch (error) {
         console.error(error);
@@ -1132,9 +1208,32 @@ export default function PortalPage() {
   const tabs = role === "manager"
     ? ["dashboard", "profile", "leave", "tasks", "worksheets", "calendar", "exports"]
     : ["dashboard", "profile", "leave", "tasks", "worksheets"];
+  const closeDailyQuoteModal = () => {
+    if (typeof window !== "undefined" && user?.id) {
+      const todayKey = getToday();
+      localStorage.setItem(`portal_daily_quote_seen_${user.id}_${todayKey}`, "seen");
+    }
+    setShowDailyQuoteModal(false);
+  };
 
   return (
     <div className={`min-h-screen ${theme === "dark" ? "bg-[radial-gradient(circle_at_top,_#312e81_0%,_#111827_42%,_#020617_100%)]" : "bg-[radial-gradient(circle_at_top,_#e0ecff_0%,_#f8fafc_35%,_#f8fafc_100%)]"}`}>
+      {showDailyQuoteModal ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-violet-400/40 bg-slate-900 p-5 shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-300">Daily Quote</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Welcome back, {user?.name || "Employee"}.</h2>
+            <p className="mt-4 rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-base leading-relaxed text-slate-100">
+              "{dailyQuote}"
+            </p>
+            <div className="mt-5 flex justify-end">
+              <button type="button" onClick={closeDailyQuoteModal} className={btnPrimary}>
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {lockedTask ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl rounded-2xl border border-red-500/40 bg-slate-900 p-5 shadow-2xl">
@@ -1166,7 +1265,7 @@ export default function PortalPage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className={`text-xs font-medium uppercase tracking-[0.2em] ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Employee Management Portal</p>
-            <h1 className={`truncate text-lg font-semibold sm:text-xl ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{user.name} ({formatRoleLabel(role)})</h1>
+            <h1 className={`truncate text-lg font-semibold sm:text-xl ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{user.name}</h1>
           </div>
           <div ref={notificationsRef} className="relative flex items-center justify-end gap-2">
             <button
@@ -1458,29 +1557,52 @@ export default function PortalPage() {
                   </div>
 
                   <div className="rounded border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/60">
-                    <p className="mb-2 text-sm font-medium text-slate-700 dark:text-white">Breaks</p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/40">
+                      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Break Controls</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-300">Start one break at a time during your shift.</p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                          activeBreakType
+                            ? "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200"
+                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200"
+                        }`}>
+                          {activeBreakType ? `Active: ${activeBreakType}` : "No active break"}
+                        </span>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                       {["Tea", "Lunch", "Evening", "Breather"].map((type) => (
                         <button
                           key={type}
                           onClick={() => handleBreak(type, activeBreakType === type ? "end" : "start")}
                           disabled={busy || !shiftRunning}
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium text-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${
-                            activeBreakType === type ? "border-orange-600 bg-orange-600 hover:bg-orange-700" : "border-violet-600 bg-violet-600 hover:bg-violet-700"
+                          className={`group inline-flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${
+                            activeBreakType === type
+                              ? "border-orange-600 bg-orange-600 text-white hover:bg-orange-700"
+                              : "border-violet-600 bg-violet-600 text-white hover:bg-violet-700"
                           }`}
                         >
-                          {isLoading(`break-${type}-${activeBreakType === type ? "end" : "start"}`) ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Coffee className="h-3.5 w-3.5" />
-                          )}
-                          {isLoading(`break-${type}-${activeBreakType === type ? "end" : "start"}`)
-                            ? "Please wait..."
-                            : activeBreakType === type
-                              ? `End ${type}`
-                              : `${type} Break`}
+                          <span className="inline-flex items-center gap-2">
+                            {isLoading(`break-${type}-${activeBreakType === type ? "end" : "start"}`) ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Coffee className="h-3.5 w-3.5" />
+                            )}
+                            <span className="text-xs font-semibold">
+                              {isLoading(`break-${type}-${activeBreakType === type ? "end" : "start"}`)
+                                ? "Please wait..."
+                                : activeBreakType === type
+                                  ? `End ${type}`
+                                  : `${type} Break`}
+                            </span>
+                          </span>
+                          <span className="rounded-md bg-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/95">
+                            {BREAK_TARGET_MINUTES[type] || 15}m
+                          </span>
                         </button>
                       ))}
+                      </div>
                     </div>
                   </div>
                 </div>
