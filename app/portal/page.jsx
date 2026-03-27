@@ -36,13 +36,18 @@ import {
   cancelManagerAssignedLeave,
   createNotification,
   createTask,
+  createSalarySlipRecord,
+  createSalarySlipRequest,
   fetchLeaveRequests,
   fetchMonthlyAttendanceSummary,
   fetchNotifications,
   fetchPortalSettings,
+  fetchSalarySlipRequests,
+  fetchSalarySlips,
   markAllNotificationsRead,
   markNotificationRead,
   fetchPendingCounts,
+  reviewSalarySlipRequest,
   setSaturdayHoliday,
   fetchTasks,
   fetchWorksheets,
@@ -64,6 +69,28 @@ const toLocalDateKey = (value) => {
 };
 const formatDate = (date) => (date ? new Date(date).toLocaleDateString("en-IN") : "-");
 const toMonthInputValue = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+const formatMonthLabel = (monthValue) => {
+  if (!monthValue) return "-";
+  const [year, month] = String(monthValue).split("-");
+  if (!year || !month) return monthValue;
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  if (Number.isNaN(date.getTime())) return monthValue;
+  return date.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+};
+const toAmount = (value) => {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+};
+const formatCurrencyINR = (value = 0) =>
+  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(Number(value || 0));
+const formatEmployeeDisplayName = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : ""))
+    .join(" ");
+const DEMO_MONTHLY_SALARY = 17000;
 const FIXED_SHIFT_LABEL = "10:00 AM - 7:00 PM";
 const SHIFT_START_HOUR = 10;
 const SHIFT_END_HOUR = 19;
@@ -116,6 +143,7 @@ const tabMeta = {
   tasks: { label: "Tasks", icon: BriefcaseBusiness },
   worksheets: { label: "Worksheets", icon: NotebookText },
   calendar: { label: "Calendar", icon: CalendarDays },
+  salary: { label: "Salary", icon: IndianRupee },
   exports: { label: "Exports", icon: FileSpreadsheet },
 };
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -214,7 +242,7 @@ export default function PortalPage() {
   const { user, isAuthenticated, loading, logout } = useAuth();
   const role = isManager(user?.role) ? "manager" : "employee";
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [refreshToken, setRefreshToken] = useState(0);
   const [busy, setBusy] = useState(false);
   const [loadingAction, setLoadingAction] = useState("");
@@ -232,6 +260,8 @@ export default function PortalPage() {
   const [leaveRows, setLeaveRows] = useState([]);
   const [taskRows, setTaskRows] = useState([]);
   const [worksheetRows, setWorksheetRows] = useState([]);
+  const [salaryRequestRows, setSalaryRequestRows] = useState([]);
+  const [salarySlipRows, setSalarySlipRows] = useState([]);
   const [pendingCounts, setPendingCounts] = useState({ leaves: 0, worksheets: 0 });
 
   const [monthFilter, setMonthFilter] = useState(toMonthInputValue());
@@ -245,9 +275,29 @@ export default function PortalPage() {
   const [monthlySummary, setMonthlySummary] = useState([]);
   const [attendanceRaw, setAttendanceRaw] = useState([]);
   const [breakRows, setBreakRows] = useState([]);
+  const [salarySlipForm, setSalarySlipForm] = useState({
+    employeeId: "",
+    month: toMonthInputValue(),
+    basic: "8500",
+    hra: "4250",
+    specialAllowance: "4250",
+    incentive: "0",
+    bonus: "0",
+    pf: "0",
+    professionalTax: "0",
+    tds: "0",
+    loanDeduction: "0",
+    otherDeduction: "0",
+    payDate: getToday(),
+    remarks: "",
+  });
+  const [salaryRequestForm, setSalaryRequestForm] = useState({
+    month: toMonthInputValue(),
+    notes: "",
+  });
 
   const [leaveForm, setLeaveForm] = useState({ fromDate: "", toDate: "", reason: "", leaveType: "General" });
-  const [managerHalfDayForm, setManagerHalfDayForm] = useState({ employeeId: "", date: getToday(), reason: "Late arrival" });
+  const [managerHalfDayForm, setManagerHalfDayForm] = useState({ employeeId: "", date: getToday(), reason: "Personal leave" });
   const [saturdayHolidayDate, setSaturdayHolidayDate] = useState(getToday());
   const [saturdayHolidayDates, setSaturdayHolidayDates] = useState([]);
   const [taskForm, setTaskForm] = useState({ title: "", details: "", assignedTo: "", priority: "medium", dueDate: "" });
@@ -265,6 +315,46 @@ export default function PortalPage() {
 
   const employeeList = useMemo(() => employees.filter((emp) => !isManager(emp.role)), []);
   const selectedEmployee = useMemo(() => employeeList.find((emp) => emp.id === taskForm.assignedTo), [employeeList, taskForm.assignedTo]);
+  const selectedSalaryEmployee = useMemo(
+    () => employeeList.find((emp) => emp.id === salarySlipForm.employeeId) || null,
+    [employeeList, salarySlipForm.employeeId]
+  );
+  const salarySlipTotals = useMemo(() => {
+    const earnings = {
+      basic: toAmount(salarySlipForm.basic),
+      hra: toAmount(salarySlipForm.hra),
+      specialAllowance: toAmount(salarySlipForm.specialAllowance),
+      incentive: toAmount(salarySlipForm.incentive),
+      bonus: toAmount(salarySlipForm.bonus),
+    };
+    const deductions = {
+      pf: toAmount(salarySlipForm.pf),
+      professionalTax: toAmount(salarySlipForm.professionalTax),
+      tds: toAmount(salarySlipForm.tds),
+      loanDeduction: toAmount(salarySlipForm.loanDeduction),
+      otherDeduction: toAmount(salarySlipForm.otherDeduction),
+    };
+    const gross = Object.values(earnings).reduce((sum, value) => sum + value, 0);
+    const totalDeductions = Object.values(deductions).reduce((sum, value) => sum + value, 0);
+    const net = Math.max(0, gross - totalDeductions);
+    return { earnings, deductions, gross, totalDeductions, net };
+  }, [salarySlipForm]);
+  const selectedSalaryAttendance = useMemo(
+    () => monthlySummary.find((row) => row.employeeId === salarySlipForm.employeeId) || null,
+    [monthlySummary, salarySlipForm.employeeId]
+  );
+  const mySalaryRequestRows = useMemo(
+    () => salaryRequestRows.filter((row) => row.employeeId === user?.id),
+    [salaryRequestRows, user?.id]
+  );
+  const mySalarySlipRows = useMemo(
+    () => salarySlipRows.filter((row) => row.employeeId === user?.id),
+    [salarySlipRows, user?.id]
+  );
+  const managerPendingSalaryRequests = useMemo(
+    () => salaryRequestRows.filter((row) => row.status === "pending" || row.status === "approved" || row.status === "generated"),
+    [salaryRequestRows]
+  );
   const unreadCount = useMemo(() => notifications.filter((note) => !note.read).length, [notifications]);
   const filteredNotifications = useMemo(
     () => notifications.filter((note) => (notificationFilter === "unread" ? !note.read : true)),
@@ -466,11 +556,13 @@ export default function PortalPage() {
     if (!isAuthenticated || !user?.id) return;
 
     const loadData = async () => {
-      const [noti, leaves, tasks, worksheets, counts, attendance, breaks, settings] = await Promise.all([
+      const [noti, leaves, tasks, worksheets, salaryRequests, salarySlips, counts, attendance, breaks, settings] = await Promise.all([
         fetchNotifications({ recipientId: user.id, role }),
         fetchLeaveRequests(role === "manager" ? {} : { employeeId: user.id }),
         fetchTasks(role === "manager" ? {} : { assignedTo: user.id }),
         fetchWorksheets(role === "manager" ? {} : { employeeId: user.id }),
+        fetchSalarySlipRequests(role === "manager" ? {} : { employeeId: user.id }),
+        fetchSalarySlips(role === "manager" ? {} : { employeeId: user.id }),
         role === "manager" ? fetchPendingCounts() : Promise.resolve({ leaves: 0, worksheets: 0 }),
         fetchAllAttendanceData(),
         fetchAllBreaksData(),
@@ -481,6 +573,8 @@ export default function PortalPage() {
       setLeaveRows(leaves);
       setTaskRows(tasks);
       setWorksheetRows(worksheets);
+      setSalaryRequestRows(salaryRequests);
+      setSalarySlipRows(salarySlips);
       setPendingCounts(counts);
       setAttendanceRaw(attendance);
       setBreakRows(breaks);
@@ -544,7 +638,7 @@ export default function PortalPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const savedTheme = localStorage.getItem("portal_theme");
-    const initialTheme = savedTheme || "dark";
+    const initialTheme = savedTheme || "light";
     setTheme(initialTheme);
     document.documentElement.classList.toggle("dark", initialTheme === "dark");
   }, []);
@@ -596,6 +690,25 @@ export default function PortalPage() {
         setFlash("Could not load monthly summary.");
       });
   }, [employeeList, isAuthenticated, monthFilter, role, refreshToken]);
+  useEffect(() => {
+    if (role !== "manager") return;
+    if (salarySlipForm.employeeId || !employeeList.length) return;
+    setSalarySlipForm((prev) => ({ ...prev, employeeId: employeeList[0].id }));
+  }, [employeeList, role, salarySlipForm.employeeId]);
+  useEffect(() => {
+    if (role !== "manager" || !salarySlipForm.employeeId) return;
+    const basic = Math.round(DEMO_MONTHLY_SALARY * 0.5);
+    const hra = Math.round(DEMO_MONTHLY_SALARY * 0.25);
+    const specialAllowance = DEMO_MONTHLY_SALARY - basic - hra;
+    setSalarySlipForm((prev) => ({
+      ...prev,
+      basic: String(basic),
+      hra: String(hra),
+      specialAllowance: String(specialAllowance),
+      incentive: "0",
+      bonus: "0",
+    }));
+  }, [role, salarySlipForm.employeeId]);
 
   const leaveConflicts = useMemo(() => {
     const bucket = {};
@@ -700,6 +813,58 @@ export default function PortalPage() {
       return row.dateKey.startsWith(`${activityExportMonth}-`);
     });
   }, [activityEmployeeFilter, activityExportDay, activityExportMode, activityExportMonth, detailedActivityRows]);
+  const progressReportRows = useMemo(() => {
+    const [yearText, monthText] = String(monthFilter || "").split("-");
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const daysInMonth = year && month ? new Date(year, month, 0).getDate() : 30;
+    const monthPrefix = year && month ? `${yearText}-${monthText}` : "";
+
+    return employeeList
+      .map((emp) => {
+        const attendance = monthlySummary.find((row) => row.employeeId === emp.id);
+        const payableDays = Number(attendance?.payableDays ?? attendance?.presentDays ?? 0);
+        const presentDays = Number(attendance?.presentDays || 0);
+        const attendanceScore = daysInMonth ? Math.min(100, (payableDays / daysInMonth) * 100) : 0;
+
+        const assignedTasks = taskRows.filter((row) => row.assignedTo === emp.id);
+        const totalTasks = assignedTasks.length;
+        const completedTasks = assignedTasks.filter((row) => row.status === "completed").length;
+        const taskScore = totalTasks ? (completedTasks / totalTasks) * 100 : 0;
+
+        const worksheetSubmitted = worksheetRows.filter((row) => {
+          if (row.employeeId !== emp.id) return false;
+          const dateKey = String(row.date || "").slice(0, 10);
+          if (!dateKey || !monthPrefix) return false;
+          return dateKey.startsWith(`${monthPrefix}-`);
+        }).length;
+        const worksheetExpected = Math.max(1, presentDays);
+        const worksheetScore = Math.min(100, (worksheetSubmitted / worksheetExpected) * 100);
+
+        const progressScore = Math.round((attendanceScore * 0.45) + (taskScore * 0.35) + (worksheetScore * 0.2));
+
+        return {
+          employeeId: emp.id,
+          employeeName: emp.name,
+          attendanceScore: Math.round(attendanceScore),
+          taskScore: Math.round(taskScore),
+          worksheetScore: Math.round(worksheetScore),
+          progressScore,
+          presentDays,
+          payableDays: Number(payableDays.toFixed(1)),
+          completedTasks,
+          totalTasks,
+          worksheetSubmitted,
+        };
+      })
+      .sort((a, b) => b.progressScore - a.progressScore);
+  }, [employeeList, monthlySummary, monthFilter, taskRows, worksheetRows]);
+  const averageProgressScore = useMemo(() => {
+    if (!progressReportRows.length) return 0;
+    const total = progressReportRows.reduce((sum, row) => sum + row.progressScore, 0);
+    return Math.round(total / progressReportRows.length);
+  }, [progressReportRows]);
+  const topPerformer = progressReportRows[0] || null;
   const liveBreakRows = useMemo(() => {
     const today = getToday();
     const todayBreaks = breakRows
@@ -939,25 +1104,26 @@ export default function PortalPage() {
     event.preventDefault();
     if (role !== "manager") return;
     if (!managerHalfDayForm.employeeId || !managerHalfDayForm.date || !managerHalfDayForm.reason) {
-      return setFlash("Employee, date, and reason are required for half day leave.");
+      return setFlash("Employee, date, and reason are required.");
     }
 
     setBusy(true);
-    setLoadingAction("manager-half-day");
+    setLoadingAction("manager-leave");
     try {
       await assignHalfDayLeaveByManager({
         employeeId: managerHalfDayForm.employeeId,
         date: managerHalfDayForm.date,
+        leaveType: "full_day",
         reason: managerHalfDayForm.reason,
         managerId: user.id,
         managerName: user.name,
       });
-      setManagerHalfDayForm({ employeeId: "", date: getToday(), reason: "Late arrival" });
-      setFlash("Half day leave assigned.");
+      setManagerHalfDayForm({ employeeId: "", date: getToday(), reason: "Personal leave" });
+      setFlash("Full Day leave assigned.");
       refresh();
     } catch (error) {
       console.error(error);
-      setFlash("Could not assign half day leave.");
+      setFlash("Could not assign leave.");
     } finally {
       setBusy(false);
       setLoadingAction("");
@@ -1107,7 +1273,243 @@ export default function PortalPage() {
     const suffix = activityExportMode === "day" ? activityExportDay : activityExportMonth;
     XLSX.writeFile(workbook, `attendance-break-report-${suffix}.xlsx`);
   };
+  const applyDemoSalarySplit = () => {
+    const basic = Math.round(DEMO_MONTHLY_SALARY * 0.5);
+    const hra = Math.round(DEMO_MONTHLY_SALARY * 0.25);
+    const specialAllowance = DEMO_MONTHLY_SALARY - basic - hra;
+    setSalarySlipForm((prev) => ({
+      ...prev,
+      basic: String(basic),
+      hra: String(hra),
+      specialAllowance: String(specialAllowance),
+      incentive: "0",
+      bonus: "0",
+    }));
+    setFlash("Demo salary split applied (INR 17,000).");
+  };
+  const buildSalarySlipHtml = (slip, autoPrint = true) => {
+    const monthLabel = formatMonthLabel(slip.month);
+    return `
+      <html>
+        <head>
+          <title>Salary Slip - ${slip.employeeName}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; color: #0f172a; }
+            .sheet { border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; }
+            .header { background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #fff; padding: 18px 20px; }
+            .header h1 { margin: 0; font-size: 22px; }
+            .header p { margin: 4px 0 0; font-size: 13px; opacity: 0.95; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+            .meta .item { font-size: 13px; }
+            .meta .label { color: #475569; }
+            .meta .value { font-weight: 700; color: #0f172a; margin-left: 4px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #e2e8f0; padding: 10px 12px; font-size: 13px; }
+            th { text-align: left; background: #f1f5f9; color: #334155; }
+            td.amount { text-align: right; font-weight: 600; }
+            .totals { background: #eff6ff; font-weight: 700; }
+            .net { margin: 16px 20px; border-radius: 10px; padding: 14px; background: #dcfce7; border: 1px solid #86efac; display: flex; justify-content: space-between; font-size: 16px; font-weight: 700; }
+            .foot { padding: 0 20px 18px; font-size: 12px; color: #475569; }
+          </style>
+        </head>
+        <body>
+          <div class="sheet">
+            <div class="header">
+              <h1>Nova TechSciences</h1>
+              <p>Salary Slip for ${monthLabel}</p>
+            </div>
+            <div class="meta">
+              <div class="item"><span class="label">Employee Name:</span><span class="value">${slip.employeeName}</span></div>
+              <div class="item"><span class="label">Employee ID:</span><span class="value">${slip.employeeId}</span></div>
+              <div class="item"><span class="label">Department:</span><span class="value">${slip.department || "Operations"}</span></div>
+              <div class="item"><span class="label">Pay Date:</span><span class="value">${formatDate(slip.payDate)}</span></div>
+              <div class="item"><span class="label">Payslip No:</span><span class="value">${slip.payslipNumber}</span></div>
+              <div class="item"><span class="label">Payable Days:</span><span class="value">${slip.payableDays ?? 0}</span></div>
+            </div>
+            <div class="grid">
+              <table>
+                <thead><tr><th>Earnings</th><th>Amount</th></tr></thead>
+                <tbody>
+                  <tr><td>Basic Salary</td><td class="amount">${formatCurrencyINR(slip.earnings?.basic)}</td></tr>
+                  <tr><td>HRA</td><td class="amount">${formatCurrencyINR(slip.earnings?.hra)}</td></tr>
+                  <tr><td>Special Allowance</td><td class="amount">${formatCurrencyINR(slip.earnings?.specialAllowance)}</td></tr>
+                  <tr><td>Incentive</td><td class="amount">${formatCurrencyINR(slip.earnings?.incentive)}</td></tr>
+                  <tr><td>Bonus</td><td class="amount">${formatCurrencyINR(slip.earnings?.bonus)}</td></tr>
+                  <tr class="totals"><td>Gross Earnings</td><td class="amount">${formatCurrencyINR(slip.gross)}</td></tr>
+                </tbody>
+              </table>
+              <table>
+                <thead><tr><th>Deductions</th><th>Amount</th></tr></thead>
+                <tbody>
+                  <tr><td>Provident Fund</td><td class="amount">${formatCurrencyINR(slip.deductions?.pf)}</td></tr>
+                  <tr><td>Professional Tax</td><td class="amount">${formatCurrencyINR(slip.deductions?.professionalTax)}</td></tr>
+                  <tr><td>TDS</td><td class="amount">${formatCurrencyINR(slip.deductions?.tds)}</td></tr>
+                  <tr><td>Loan Deduction</td><td class="amount">${formatCurrencyINR(slip.deductions?.loanDeduction)}</td></tr>
+                  <tr><td>Other Deductions</td><td class="amount">${formatCurrencyINR(slip.deductions?.otherDeduction)}</td></tr>
+                  <tr class="totals"><td>Total Deductions</td><td class="amount">${formatCurrencyINR(slip.totalDeductions)}</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="net">
+              <span>Net Pay</span>
+              <span>${formatCurrencyINR(slip.net)}</span>
+            </div>
+            <div class="foot">
+              <p>Remarks: ${slip.remarks || "-"}</p>
+              <p>This is a computer-generated salary slip and does not require a physical signature.</p>
+            </div>
+          </div>
+          ${autoPrint ? "<script>window.print();</script>" : ""}
+        </body>
+      </html>
+    `;
+  };
+  const openSalarySlipWindow = (slip, autoPrint = true) => {
+    const win = window.open("", "_blank");
+    if (!win) {
+      setFlash("Please allow popups to view salary slip.");
+      return false;
+    }
+    win.document.write(buildSalarySlipHtml(slip, autoPrint));
+    win.document.close();
+    return true;
+  };
+  const generateSalarySlip = async ({ requestRow = null, openPreview = true } = {}) => {
+    const targetEmployeeId = requestRow?.employeeId || salarySlipForm.employeeId;
+    const targetMonth = requestRow?.month || salarySlipForm.month;
+    if (!targetEmployeeId) return setFlash("Please select an employee for salary slip.");
 
+    const employee = employeeList.find((emp) => emp.id === targetEmployeeId);
+    if (!employee) return setFlash("Selected employee details are missing.");
+    if (salarySlipTotals.gross <= 0) return setFlash("Please enter salary earnings greater than zero.");
+    const matchedApprovedRequest = salaryRequestRows.find(
+      (row) =>
+        row.employeeId === targetEmployeeId
+        && row.month === targetMonth
+        && (row.status === "approved" || row.status === "generated")
+    );
+    if (!requestRow && role === "manager" && !matchedApprovedRequest) {
+      return setFlash("Approve employee salary request first, then generate slip.");
+    }
+
+    const attendance = monthlySummary.find((row) => row.employeeId === targetEmployeeId);
+    const attendanceDays = attendance?.presentDays ?? 0;
+    const payableDays = attendance?.payableDays ?? attendanceDays;
+    const payslipNumber = `NTS/${String(targetMonth || "").replace("-", "")}/${employee.id}`;
+
+    setBusy(true);
+    setLoadingAction(requestRow?.id ? `salary-generate-${requestRow.id}` : "salary-generate");
+    try {
+      const slipPayload = {
+        requestId: requestRow?.id || matchedApprovedRequest?.id || "",
+        employeeId: employee.id,
+        employeeName: employee.name,
+        department: employee.department || "Operations",
+        month: targetMonth,
+        payDate: salarySlipForm.payDate,
+        payableDays,
+        remarks: salarySlipForm.remarks || "",
+        earnings: salarySlipTotals.earnings,
+        deductions: salarySlipTotals.deductions,
+        gross: salarySlipTotals.gross,
+        totalDeductions: salarySlipTotals.totalDeductions,
+        net: salarySlipTotals.net,
+        generatedBy: user?.id || "",
+        generatedByName: user?.name || "Manager",
+      };
+
+      await createSalarySlipRecord(slipPayload);
+      if (openPreview) {
+        openSalarySlipWindow({ ...slipPayload, payslipNumber }, true);
+      }
+      setFlash("Salary slip generated and shared.");
+      refresh();
+    } catch (error) {
+      console.error(error);
+      setFlash("Could not generate salary slip.");
+    } finally {
+      setBusy(false);
+      setLoadingAction("");
+    }
+  };
+  const handleSubmitSalaryRequest = async (event) => {
+    event.preventDefault();
+    if (!user?.id) return;
+    if (!salaryRequestForm.month) return setFlash("Please select month for salary slip request.");
+    setBusy(true);
+    setLoadingAction("salary-request-submit");
+    try {
+      await createSalarySlipRequest({
+        employeeId: user.id,
+        employeeName: user.name,
+        employeeEmail: user.email,
+        month: salaryRequestForm.month,
+        notes: salaryRequestForm.notes,
+      });
+      setSalaryRequestForm({ month: toMonthInputValue(), notes: "" });
+      setFlash("Salary slip request submitted.");
+      refresh();
+    } catch (error) {
+      console.error(error);
+      setFlash("Could not submit salary slip request.");
+    } finally {
+      setBusy(false);
+      setLoadingAction("");
+    }
+  };
+  const handleReviewSalaryRequest = async (row, decision) => {
+    if (!row?.id) return;
+    setBusy(true);
+    setLoadingAction(`salary-request-${row.id}-${decision}`);
+    try {
+      await reviewSalarySlipRequest({
+        requestId: row.id,
+        decision,
+        managerId: user?.id || "",
+        managerName: user?.name || "Manager",
+      });
+      setFlash(`Salary request ${decision}.`);
+      refresh();
+    } catch (error) {
+      console.error(error);
+      setFlash("Could not update salary request.");
+    } finally {
+      setBusy(false);
+      setLoadingAction("");
+    }
+  };
+  const handleDownloadSalarySlip = (row) => {
+    if (!row) return;
+    const payslipNumber = `NTS/${String(row.month || "").replace("-", "")}/${row.employeeId}`;
+    openSalarySlipWindow({
+      ...row,
+      payslipNumber,
+    }, true);
+  };
+  const exportProgressReportExcel = () => {
+    if (!progressReportRows.length) return setFlash("No progress report data available.");
+
+    const exportRows = progressReportRows.map((row, index) => ({
+      Rank: index + 1,
+      EmployeeID: row.employeeId,
+      EmployeeName: row.employeeName,
+      AttendanceScore: `${row.attendanceScore}%`,
+      TaskCompletionScore: `${row.taskScore}%`,
+      WorksheetScore: `${row.worksheetScore}%`,
+      OverallProgress: `${row.progressScore}%`,
+      PresentDays: row.presentDays,
+      PayableDays: row.payableDays,
+      TasksCompleted: row.completedTasks,
+      TotalTasks: row.totalTasks,
+      WorksheetsSubmitted: row.worksheetSubmitted,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Employee Progress");
+    XLSX.writeFile(workbook, `employee-progress-report-${monthFilter}.xlsx`);
+  };
   const handleNotificationClick = async (note) => {
     if (!note?.id || note.read) return;
     setNotifications((prev) => prev.map((item) => (item.id === note.id ? { ...item, read: true } : item)));
@@ -1206,8 +1608,8 @@ export default function PortalPage() {
   ];
 
   const tabs = role === "manager"
-    ? ["dashboard", "profile", "leave", "tasks", "worksheets", "calendar", "exports"]
-    : ["dashboard", "profile", "leave", "tasks", "worksheets"];
+    ? ["dashboard", "profile", "leave", "tasks", "worksheets", "salary", "calendar", "exports"]
+    : ["dashboard", "profile", "leave", "tasks", "worksheets", "salary"];
   const closeDailyQuoteModal = () => {
     if (typeof window !== "undefined" && user?.id) {
       const todayKey = getToday();
@@ -1718,6 +2120,90 @@ export default function PortalPage() {
 
               {role === "manager" ? (
                 <>
+                  <SectionCard
+                    title="Employee Progress Graph and Report"
+                    right={
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="month"
+                          value={monthFilter}
+                          onChange={(e) => setMonthFilter(e.target.value)}
+                          className={`rounded-lg px-3 py-1.5 text-sm ${theme === "dark" ? "border border-slate-600 bg-slate-900 text-slate-100" : "border border-slate-300 bg-white text-slate-800"}`}
+                        />
+                        <button type="button" onClick={exportProgressReportExcel} className={btnSecondary}>
+                          <FileSpreadsheet className="h-4 w-4" />
+                          Export Progress
+                        </button>
+                      </div>
+                    }
+                  >
+                    <div className="mb-4 grid gap-3 md:grid-cols-3">
+                      <div className={`rounded-xl p-3 ${theme === "dark" ? "border border-slate-700 bg-slate-900/70" : "border border-slate-200 bg-slate-50"}`}>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Team Average Progress</p>
+                        <p className={`mt-1 text-2xl font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{averageProgressScore}%</p>
+                      </div>
+                      <div className={`rounded-xl p-3 ${theme === "dark" ? "border border-slate-700 bg-slate-900/70" : "border border-slate-200 bg-slate-50"}`}>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Top Performer</p>
+                        <p className={`mt-1 text-base font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{topPerformer?.employeeName ? formatEmployeeDisplayName(topPerformer.employeeName) : "-"}</p>
+                        <p className={`text-sm ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>{topPerformer?.progressScore ?? 0}%</p>
+                      </div>
+                      <div className={`rounded-xl p-3 ${theme === "dark" ? "border border-slate-700 bg-slate-900/70" : "border border-slate-200 bg-slate-50"}`}>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Employees Covered</p>
+                        <p className={`mt-1 text-2xl font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{progressReportRows.length}</p>
+                      </div>
+                    </div>
+
+                    <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-900/60" : "border-slate-200 bg-slate-50"}`}>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Team Progress Bar Graph</p>
+                        <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>Overall Progress %</p>
+                      </div>
+                      <div className="overflow-x-auto pb-2">
+                        <div className="flex min-w-[720px] items-end gap-3 rounded-lg border border-slate-200 bg-white px-3 py-4 dark:border-slate-700 dark:bg-slate-950/40">
+                          {progressReportRows.map((row) => (
+                            <div key={`progress-bar-${row.employeeId}`} className="flex min-w-[92px] flex-1 flex-col items-center justify-end">
+                              <p className={`mb-1 text-[11px] font-semibold ${theme === "dark" ? "text-slate-300" : "text-slate-700"}`}>{row.progressScore}%</p>
+                              <div className="flex h-52 w-full items-end rounded-md border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-900/70">
+                                <div
+                                  className="w-full rounded-sm bg-gradient-to-t from-blue-500 via-cyan-500 to-emerald-400 transition-all duration-500"
+                                  style={{ height: `${Math.max(8, row.progressScore)}%` }}
+                                  title={`${row.employeeName}: ${row.progressScore}%`}
+                                />
+                              </div>
+                              <p className={`mt-2 text-center text-[11px] font-medium ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{formatEmployeeDisplayName(row.employeeName)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`mt-4 overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700" : "border border-slate-200"}`}>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className={theme === "dark" ? "bg-slate-900/70" : "bg-slate-50"}>
+                            <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
+                              <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Employee</th>
+                              <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Attendance</th>
+                              <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Task Completion</th>
+                              <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Worksheets</th>
+                              <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Overall Progress</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {progressReportRows.map((row) => (
+                              <tr key={`progress-row-${row.employeeId}`} className={`${theme === "dark" ? "border-b border-slate-800 hover:bg-slate-900/60" : "border-b border-slate-100 hover:bg-slate-50/70"} last:border-0`}>
+                                <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{formatEmployeeDisplayName(row.employeeName)}</td>
+                                <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.attendanceScore}%</td>
+                                <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.taskScore}% ({row.completedTasks}/{row.totalTasks})</td>
+                                <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.worksheetScore}% ({row.worksheetSubmitted})</td>
+                                <td className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{row.progressScore}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </SectionCard>
                 </>
               ) : null}
             </>
@@ -1782,12 +2268,12 @@ export default function PortalPage() {
                   <input
                     value={managerHalfDayForm.reason}
                     onChange={(e) => setManagerHalfDayForm((prev) => ({ ...prev, reason: e.target.value }))}
-                    placeholder="Reason (e.g. Late arrival)"
+                    placeholder="Reason (e.g. Personal leave)"
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                   />
                   <button type="submit" disabled={busy} className={btnPrimary}>
-                    {isLoading("manager-half-day") ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {isLoading("manager-half-day") ? "Applying..." : "Set Half Day"}
+                    {isLoading("manager-leave") ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {isLoading("manager-leave") ? "Applying..." : "Set Full Day"}
                   </button>
                 </form>
               ) : null}
@@ -1936,6 +2422,166 @@ export default function PortalPage() {
                   row={row}
                 />
               ))}
+            </SectionCard>
+          ) : null}
+
+          {activeTab === "salary" ? (
+            <SectionCard title={role === "manager" ? "Salary Request Approval and Slip Generation" : "Salary Slip Request and Download"}>
+              {role === "employee" ? (
+                <>
+                  <form onSubmit={handleSubmitSalaryRequest} className="mb-4 grid gap-3 md:grid-cols-3">
+                    <input
+                      type="month"
+                      value={salaryRequestForm.month}
+                      onChange={(e) => setSalaryRequestForm((prev) => ({ ...prev, month: e.target.value }))}
+                      className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                    />
+                    <input
+                      value={salaryRequestForm.notes}
+                      onChange={(e) => setSalaryRequestForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Note (optional)"
+                      className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                    />
+                    <button type="submit" disabled={busy} className={btnPrimary}>
+                      {isLoading("salary-request-submit") ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {isLoading("salary-request-submit") ? "Submitting..." : "Request Salary Slip"}
+                    </button>
+                  </form>
+
+                  <div className={`mb-4 overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700" : "border border-slate-200"}`}>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className={theme === "dark" ? "bg-slate-900/70" : "bg-slate-50"}>
+                          <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Month</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Status</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Comment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mySalaryRequestRows.map((row) => (
+                            <tr key={row.id} className={`${theme === "dark" ? "border-b border-slate-800" : "border-b border-slate-100"} last:border-0`}>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{formatMonthLabel(row.month)}</td>
+                              <td className={`px-3 py-2.5 capitalize ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{String(row.status || "-").replace("_", " ")}</td>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.reviewComment || row.notes || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {mySalaryRequestRows.length === 0 ? (
+                        <p className={`py-3 text-center text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No salary requests yet.</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className={`overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700" : "border border-slate-200"}`}>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className={theme === "dark" ? "bg-slate-900/70" : "bg-slate-50"}>
+                          <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Month</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Net Salary</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mySalarySlipRows.map((row) => (
+                            <tr key={row.id} className={`${theme === "dark" ? "border-b border-slate-800" : "border-b border-slate-100"} last:border-0`}>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{formatMonthLabel(row.month)}</td>
+                              <td className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{formatCurrencyINR(row.net)}</td>
+                              <td className="px-3 py-2.5">
+                                <button type="button" onClick={() => handleDownloadSalarySlip(row)} className={btnTinyPrimary}>Download</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {mySalarySlipRows.length === 0 ? (
+                        <p className={`py-3 text-center text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No salary slip generated yet.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className={`mb-3 text-sm ${theme === "dark" ? "text-slate-200" : "text-slate-600"}`}>Approve employee requests first, then generate slip to make it visible in employee salary section.</p>
+                  <div className={`mb-4 overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700" : "border border-slate-200"}`}>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className={theme === "dark" ? "bg-slate-900/70" : "bg-slate-50"}>
+                          <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Employee</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Month</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Status</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managerPendingSalaryRequests.map((row) => (
+                            <tr key={row.id} className={`${theme === "dark" ? "border-b border-slate-800" : "border-b border-slate-100"} last:border-0`}>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.employeeName}</td>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{formatMonthLabel(row.month)}</td>
+                              <td className={`px-3 py-2.5 capitalize ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{String(row.status || "-").replace("_", " ")}</td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex flex-wrap gap-2">
+                                  {row.status === "pending" ? (
+                                    <>
+                                      <button type="button" onClick={() => handleReviewSalaryRequest(row, "approved")} disabled={busy} className={btnTinySuccess}>
+                                        {isLoading(`salary-request-${row.id}-approved`) ? "Approving..." : "Approve"}
+                                      </button>
+                                      <button type="button" onClick={() => handleReviewSalaryRequest(row, "rejected")} disabled={busy} className={btnTinyDanger}>
+                                        {isLoading(`salary-request-${row.id}-rejected`) ? "Rejecting..." : "Reject"}
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {(row.status === "approved" || row.status === "generated") ? (
+                                    <button type="button" onClick={() => generateSalarySlip({ requestRow: row, openPreview: true })} disabled={busy} className={btnTinyPrimary}>
+                                      {isLoading(`salary-generate-${row.id}`) ? "Generating..." : "Generate Slip"}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {managerPendingSalaryRequests.length === 0 ? (
+                        <p className={`py-3 text-center text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No salary requests pending.</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className={`overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700" : "border border-slate-200"}`}>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className={theme === "dark" ? "bg-slate-900/70" : "bg-slate-50"}>
+                          <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Employee</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Month</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Net Salary</th>
+                            <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {salarySlipRows.map((row) => (
+                            <tr key={row.id} className={`${theme === "dark" ? "border-b border-slate-800" : "border-b border-slate-100"} last:border-0`}>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.employeeName}</td>
+                              <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{formatMonthLabel(row.month)}</td>
+                              <td className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{formatCurrencyINR(row.net)}</td>
+                              <td className="px-3 py-2.5">
+                                <button type="button" onClick={() => handleDownloadSalarySlip(row)} className={btnTinyPrimary}>Download</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {salarySlipRows.length === 0 ? (
+                        <p className={`py-3 text-center text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No generated salary slips yet.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              )}
             </SectionCard>
           ) : null}
 
@@ -2194,6 +2840,108 @@ export default function PortalPage() {
                   {filteredDetailedActivityRows.length === 0 ? (
                     <p className={`py-3 text-center text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No records for selected filters.</p>
                   ) : null}
+                </div>
+              </div>
+
+              <div className={`mt-5 rounded-2xl border p-4 ${theme === "dark" ? "border-amber-400/30 bg-gradient-to-br from-amber-900/20 to-slate-900/80" : "border-amber-200 bg-gradient-to-br from-amber-50 to-white"}`}>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className={`text-xs uppercase tracking-[0.18em] ${theme === "dark" ? "text-amber-200" : "text-amber-700"}`}>Manager Tool</p>
+                    <h3 className={`text-lg font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Salary Slip Generator</h3>
+                    <p className={`text-sm ${theme === "dark" ? "text-slate-200" : "text-slate-600"}`}>Manager can decide salary components and generate print-ready slip.</p>
+                    <p className={`text-xs font-medium ${theme === "dark" ? "text-amber-100" : "text-amber-700"}`}>Demo rule: All employees monthly salary = {formatCurrencyINR(DEMO_MONTHLY_SALARY)} (auto split applied).</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={applyDemoSalarySplit}
+                      className="inline-flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md"
+                    >
+                      Apply 17,000 Split
+                    </button>
+                    <button
+                      type="button"
+                      onClick={generateSalarySlip}
+                      className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-amber-700 hover:shadow-md"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Generate Salary Slip
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
+                    <p className={`mb-3 text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Employee & Period</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <select
+                        value={salarySlipForm.employeeId}
+                        onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, employeeId: e.target.value }))}
+                        className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`}
+                      >
+                        <option value="">Select employee</option>
+                        {employeeList.map((emp) => (
+                          <option key={`salary-${emp.id}`} value={emp.id}>{emp.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="month"
+                        value={salarySlipForm.month}
+                        onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, month: e.target.value }))}
+                        className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`}
+                      />
+                      <input
+                        type="date"
+                        value={salarySlipForm.payDate}
+                        onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, payDate: e.target.value }))}
+                        className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`}
+                      />
+                      <input
+                        value={salarySlipForm.remarks}
+                        onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                        placeholder="Remarks (optional)"
+                        className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`}
+                      />
+                    </div>
+                    <div className={`mt-3 grid gap-2 rounded-lg border p-2 text-xs ${theme === "dark" ? "border-slate-700 bg-slate-950/70 text-slate-200" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                      <p><span className="font-semibold">Employee:</span> {selectedSalaryEmployee?.name || "-"}</p>
+                      <p><span className="font-semibold">Department:</span> {selectedSalaryEmployee?.department || "-"}</p>
+                      <p><span className="font-semibold">Payable Days:</span> {selectedSalaryAttendance?.payableDays ?? 0}</p>
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
+                    <p className={`mb-3 text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Earnings (INR)</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input type="number" min="0" value={salarySlipForm.basic} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, basic: e.target.value }))} placeholder="Basic Salary" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.hra} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, hra: e.target.value }))} placeholder="HRA" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.specialAllowance} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, specialAllowance: e.target.value }))} placeholder="Special Allowance" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.incentive} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, incentive: e.target.value }))} placeholder="Incentive" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.bonus} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, bonus: e.target.value }))} placeholder="Bonus" className={`rounded-md border px-3 py-2 text-sm sm:col-span-2 ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
+                    <p className={`mb-3 text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Deductions (INR)</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input type="number" min="0" value={salarySlipForm.pf} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, pf: e.target.value }))} placeholder="Provident Fund" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.professionalTax} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, professionalTax: e.target.value }))} placeholder="Professional Tax" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.tds} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, tds: e.target.value }))} placeholder="TDS" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.loanDeduction} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, loanDeduction: e.target.value }))} placeholder="Loan Deduction" className={`rounded-md border px-3 py-2 text-sm ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                      <input type="number" min="0" value={salarySlipForm.otherDeduction} onChange={(e) => setSalarySlipForm((prev) => ({ ...prev, otherDeduction: e.target.value }))} placeholder="Other Deductions" className={`rounded-md border px-3 py-2 text-sm sm:col-span-2 ${theme === "dark" ? "border-slate-600 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-900"}`} />
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-emerald-500/30 bg-emerald-950/20" : "border-emerald-200 bg-emerald-50/70"}`}>
+                    <p className={`mb-2 text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Salary Summary</p>
+                    <div className={`space-y-1 text-sm ${theme === "dark" ? "text-slate-100" : "text-slate-700"}`}>
+                      <p className="flex items-center justify-between"><span>Gross Earnings</span><span className="font-semibold">{formatCurrencyINR(salarySlipTotals.gross)}</span></p>
+                      <p className="flex items-center justify-between"><span>Total Deductions</span><span className="font-semibold">{formatCurrencyINR(salarySlipTotals.totalDeductions)}</span></p>
+                      <p className={`mt-2 flex items-center justify-between border-t pt-2 text-base font-bold ${theme === "dark" ? "border-slate-700 text-emerald-300" : "border-emerald-200 text-emerald-700"}`}>
+                        <span>Net Salary</span><span>{formatCurrencyINR(salarySlipTotals.net)}</span>
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </SectionCard>

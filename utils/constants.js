@@ -39,17 +39,6 @@ export const employees = [
     dateOfJoining: "2025-10-10"
   },
   { 
-    id: "NTS-004", 
-    name: "Vaishnavi GHODVINDE", 
-    shift: "10:00 AM - 7:00 PM",
-    email: "vaishnavighodvinde@gmail.com",
-    phone: "+91 9876543213",
-    role: "agent",
-    department: "Operations",
-    password: "vaishnavi123",
-    dateOfJoining: "2025-10-10"
-  },
-  { 
     id: "NTS-005", 
     name: "RUSHIKESH ANDHALE", 
     shift: "10:00 AM - 7:00 PM",
