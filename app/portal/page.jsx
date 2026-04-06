@@ -176,12 +176,28 @@ const formatTimeAgo = (dateValue) => {
   return date.toLocaleDateString("en-IN");
 };
 const formatActionLabel = (value) => {
-  const action = String(value || "").toLowerCase();
+  const action = normalizeAttendanceAction(value);
   if (action === "clock-in") return "Shift Start";
   if (action === "clock-out") return "Shift End";
   if (action === "break-start") return "Break Start";
   if (action === "break-end") return "Break End";
   return value || "-";
+};
+const normalizeAttendanceAction = (value) => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+
+  if (["clock-in", "shift-start", "start", "login", "log-in"].includes(normalized)) return "clock-in";
+  if (["clock-out", "shift-end", "end", "logout", "log-out"].includes(normalized)) return "clock-out";
+  return normalized;
+};
+const getRowDateKey = (row) => {
+  const rawDate = String(row?.date || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return rawDate;
+  const ts = row?.timestamp instanceof Date ? row.timestamp : new Date(row?.timestamp || Date.now());
+  return toLocalDateKey(ts);
 };
 const formatRoleLabel = (value) => {
   const role = String(value || "").trim().toLowerCase();
@@ -733,13 +749,13 @@ export default function PortalPage() {
     for (let i = 13; i >= 0; i -= 1) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
-      dates.push(d.toISOString().slice(0, 10));
+      dates.push(toLocalDateKey(d));
     }
 
     const attendanceMap = new Map();
     attendanceRaw.forEach((row) => {
-      if (row.action !== "clock-in") return;
-      const date = row.date || (row.timestamp instanceof Date ? row.timestamp.toISOString().slice(0, 10) : "");
+      if (normalizeAttendanceAction(row.action) !== "clock-in") return;
+      const date = getRowDateKey(row);
       attendanceMap.set(`${row.empId}-${date}`, true);
     });
 
@@ -755,13 +771,25 @@ export default function PortalPage() {
 
   const todayAttendanceRows = useMemo(() => {
     const today = getToday();
-    return attendanceRaw
-      .filter((row) => (row.date || "").slice(0, 10) === today)
+    const sortedRows = attendanceRaw
+      .filter((row) => getRowDateKey(row) === today)
+      .map((row) => ({ ...row, action: normalizeAttendanceAction(row.action) }))
       .sort((a, b) => {
         const aTime = rowTime(a);
         const bTime = rowTime(b);
         return bTime - aTime;
       });
+
+    const latestByEmployeeAction = new Map();
+    sortedRows.forEach((row) => {
+      const employeeKey = row.empId || row.employeeId || row.empName || row.employeeName || "unknown";
+      const key = `${employeeKey}-${row.action || "-"}`;
+      if (!latestByEmployeeAction.has(key)) {
+        latestByEmployeeAction.set(key, row);
+      }
+    });
+
+    return Array.from(latestByEmployeeAction.values());
   }, [attendanceRaw]);
 
   const myAttendanceRows = useMemo(
@@ -771,12 +799,12 @@ export default function PortalPage() {
   const detailedActivityRows = useMemo(() => {
     const attendanceEvents = attendanceRaw.map((row) => {
       const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
-      const dateKey = (row.date || (timestamp instanceof Date ? timestamp.toISOString().slice(0, 10) : "")).slice(0, 10);
+      const dateKey = getRowDateKey(row);
       return {
         employeeId: row.empId || row.employeeId || "-",
         employeeName: row.empName || row.employeeName || "-",
         eventType: "attendance",
-        action: row.action || "-",
+        action: normalizeAttendanceAction(row.action) || "-",
         breakType: "",
         dateKey,
         displayDate: formatDate(dateKey),
@@ -789,7 +817,7 @@ export default function PortalPage() {
       const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
       const rawAction = String(row.action || "").toLowerCase();
       const inferredAction = rawAction || (String(row.status || "").toLowerCase() === "active" ? "start" : "end");
-      const dateKey = (row.date || (timestamp instanceof Date ? timestamp.toISOString().slice(0, 10) : "")).slice(0, 10);
+      const dateKey = getRowDateKey(row);
       return {
         employeeId: row.employeeId || row.empId || "-",
         employeeName: row.employeeName || row.empName || "-",
@@ -872,7 +900,7 @@ export default function PortalPage() {
         const ts = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
         if (Number.isNaN(ts.getTime())) return false;
         const rowDateFromField = String(row.date || "").slice(0, 10);
-        const rowDateFromTs = ts.toISOString().slice(0, 10);
+        const rowDateFromTs = toLocalDateKey(ts);
         return rowDateFromField === today || rowDateFromTs === today;
       })
       .sort((a, b) => {

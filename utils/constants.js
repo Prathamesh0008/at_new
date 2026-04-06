@@ -6,21 +6,10 @@
 // /utils/constants.js
 export const employees = [
   { 
-    id: "NTS-001", 
-    name: "Prathamesh Shinde", 
-    shift: "10:00 AM - 7:00 PM",
-    email: "prathameshs157@gmail.com",
-    phone: "+91 9876543210",
-    role: "agent",
-    department: "Operations",
-    password: "prathamesh123",
-    dateOfJoining: "2025-12-15"
-  },
-  { 
     id: "NTS-002", 
     name: "Adarsh Singh", 
     shift: "10:00 AM - 7:00 PM",
-    email: "mawesome230@gmail.com",
+    email: "adarsh@asblogi.com",
     phone: "+91 9876543211",
     role: "agent",
     department: "Operations",
@@ -31,7 +20,7 @@ export const employees = [
     id: "NTS-003", 
     name: "Payal Nalavade", 
     shift: "10:00 AM - 7:00 PM",
-    email: "Payalnalwade73@gmail.com",
+    email: "payal@asblogi.com",
     phone: "+91 9876543212",
     role: "agent",
     department: "Operations",
@@ -42,7 +31,7 @@ export const employees = [
     id: "NTS-005", 
     name: "RUSHIKESH ANDHALE", 
     shift: "10:00 AM - 7:00 PM",
-    email: "rushikeshandhale1010@gmail.com",
+    email: "rushikesh@asblogi.com",
     phone: "+91 9867006814",
     role: "agent",
     department: "Operations",
@@ -53,7 +42,7 @@ export const employees = [
     id: "NTS-006", 
     name: "Upasana Patil", 
     shift: "10:00 AM - 7:00 PM",
-    email: "patilupasana27@gmail.com",
+    email: "upasana@asblogi.com",
     phone: "+91 9876543215",
     role: "agent",
     department: "Operations",
@@ -64,18 +53,18 @@ export const employees = [
     id: "NTS-007", 
     name: "Prajakta Dhande", 
     shift: "10:00 AM - 7:00 PM",
-    email: "dhandeprajakta123@gmail.com",
-    phone: "+91 9876543216",
+    email: "prajakta@asblogi.com",
+    phone: "+91 9156607486",
     role: "agent",
     department: "Operations",
     password: "prajakta123",
-    dateOfJoining: "2025-10-10"
+    dateOfJoining: "2025-10-12"
   },
   { 
     id: "NTS-008", 
     name: "Chotelal Singh", 
     shift: "10:00 AM - 7:00 PM",
-    email: "chotelal.singh@novatechsciences.com",
+    email: "chotelal@asblogi.com",
     phone: "+91 9876543217",
     role: "agent",
     department: "Operations",
@@ -86,7 +75,7 @@ export const employees = [
     id: "NTS-MGR", 
     name: "Prathamesh Shinde ", 
     shift: "10:00 AM - 7:00 PM",
-    email: "sprathamesh581@gmail.com",
+    email: "prathamesh@asblogi.com",
     phone: "+91 9876543210",
     role: "manager",
     department: "Management",
@@ -97,7 +86,7 @@ export const employees = [
 
 export const MANAGER = {
   name: "Prathamesh Shinde",
-  email: "sprathamesh581@gmail.com",
+  email: "prathamesh@asblogi.com",
   phone: "+91 9876543210"
 };
 
