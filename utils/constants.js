@@ -75,7 +75,7 @@ export const employees = [
     id: "NTS-MGR", 
     name: "Prathamesh Shinde ", 
     shift: "10:00 AM - 7:00 PM",
-    email: "prathamesh@asblogi.com",
+    email: "novadesigns79@gmail.com",
     phone: "+91 9876543210",
     role: "manager",
     department: "Management",
@@ -86,7 +86,7 @@ export const employees = [
 
 export const MANAGER = {
   name: "Prathamesh Shinde",
-  email: "prathamesh@asblogi.com",
+  email: "novadesigns79@gmail.com",
   phone: "+91 9876543210"
 };
 

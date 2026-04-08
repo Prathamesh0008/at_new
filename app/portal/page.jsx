@@ -1647,7 +1647,7 @@ export default function PortalPage() {
   };
 
   return (
-    <div className={`min-h-screen ${theme === "dark" ? "bg-[radial-gradient(circle_at_top,_#312e81_0%,_#111827_42%,_#020617_100%)]" : "bg-[radial-gradient(circle_at_top,_#e0ecff_0%,_#f8fafc_35%,_#f8fafc_100%)]"}`}>
+    <div className={`min-h-screen ${theme === "dark" ? "bg-[radial-gradient(circle_at_top,_#A346FF_0%,_#000721_58%,_#000721_100%)]" : "bg-[radial-gradient(circle_at_top,_#e0ecff_0%,_#f8fafc_35%,_#f8fafc_100%)]"}`}>
       {showDailyQuoteModal ? (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl border border-violet-400/40 bg-slate-900 p-5 shadow-2xl">
@@ -1691,16 +1691,20 @@ export default function PortalPage() {
           </div>
         </div>
       ) : null}
-      <header className={`sticky top-0 z-20 border-b backdrop-blur ${theme === "dark" ? "border-violet-900/70 bg-[#0d1020]/85" : "border-slate-200/80 bg-white/85"}`}>
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className={`relative sticky top-0 z-30 border-b backdrop-blur-xl ${theme === "dark" ? "border-[#A346FF]/40 bg-[linear-gradient(120deg,rgba(0,7,33,0.96)_0%,rgba(12,18,48,0.92)_56%,rgba(163,70,255,0.18)_100%)] shadow-[0_14px_40px_-24px_rgba(163,70,255,0.85)]" : "border-slate-200/80 bg-[linear-gradient(120deg,rgba(255,255,255,0.95)_0%,rgba(241,245,249,0.92)_100%)] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]"}`}>
+        <div className={`pointer-events-none absolute inset-x-0 bottom-0 h-px ${theme === "dark" ? "bg-gradient-to-r from-transparent via-[#A346FF]/70 to-transparent" : "bg-gradient-to-r from-transparent via-slate-300 to-transparent"}`} />
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className={`text-xs font-medium uppercase tracking-[0.2em] ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Employee Management Portal</p>
+            <div className={`mb-1 inline-flex items-center gap-2 rounded-full border px-3 py-1 ${theme === "dark" ? "border-[#A346FF]/55 bg-[#A346FF]/15" : "border-slate-300 bg-white/90"}`}>
+              <span className={`h-2 w-2 rounded-full ${theme === "dark" ? "bg-[#A346FF] shadow-[0_0_14px_rgba(163,70,255,0.95)]" : "bg-emerald-500"}`} />
+              <p className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${theme === "dark" ? "text-white/95" : "text-slate-600"}`}>Employee Management Portal</p>
+            </div>
             <h1 className={`truncate text-lg font-semibold sm:text-xl ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{user.name}</h1>
           </div>
           <div ref={notificationsRef} className="relative flex items-center justify-end gap-2">
             <button
               onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-              className={`inline-flex h-10 items-center justify-center gap-1 rounded-lg border px-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${theme === "dark" ? "border-violet-700/60 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
+              className={`inline-flex h-10 items-center justify-center gap-1 rounded-xl border px-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${theme === "dark" ? "border-[#A346FF]/65 bg-[#A346FF]/14 text-white hover:border-[#A346FF] hover:bg-[#A346FF]/28 hover:shadow-[0_10px_26px_-14px_rgba(163,70,255,0.9)]" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
               aria-label="Toggle theme"
             >
               {theme === "dark" ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -1708,7 +1712,7 @@ export default function PortalPage() {
             </button>
             <button
               onClick={() => setShowNotifications((prev) => !prev)}
-              className={`relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${theme === "dark" ? "border-violet-700/60 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
+              className={`relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${theme === "dark" ? "border-[#A346FF]/65 bg-[#A346FF]/14 text-white hover:border-[#A346FF] hover:bg-[#A346FF]/28 hover:shadow-[0_10px_26px_-14px_rgba(163,70,255,0.9)]" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
               aria-label="Toggle notifications"
             >
               <Bell className="h-5 w-5" />
@@ -1718,10 +1722,15 @@ export default function PortalPage() {
                 </span>
               ) : null}
             </button>
-            <button onClick={logout} className={btnSecondary}>Logout</button>
+            <button
+              onClick={logout}
+              className={`inline-flex h-10 items-center justify-center rounded-xl border px-3 text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 ${theme === "dark" ? "border-[#A346FF]/65 bg-gradient-to-r from-[#A346FF]/85 to-[#7B2FD2]/85 text-white hover:from-[#A346FF] hover:to-[#8A38EA] hover:shadow-[0_12px_28px_-16px_rgba(163,70,255,1)]" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
+            >
+              Logout
+            </button>
 
             {showNotifications ? (
-              <div className={`absolute right-0 top-12 z-30 w-[min(94vw,380px)] rounded-xl border p-0 shadow-xl ${theme === "dark" ? "border-violet-900/70 bg-[#111427]" : "border-slate-200 bg-white"}`}>
+              <div className={`absolute right-0 top-12 z-30 w-[min(94vw,380px)] rounded-xl border p-0 shadow-xl ${theme === "dark" ? "border-violet-900/70 bg-[#000721]" : "border-slate-200 bg-white"}`}>
                 <div className={`border-b p-3 ${theme === "dark" ? "border-violet-900/70" : "border-slate-200"}`}>
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Notifications</p>
@@ -1796,7 +1805,7 @@ export default function PortalPage() {
       </header>
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-3 py-4 sm:px-4 sm:py-5 lg:grid-cols-[250px_1fr]">
-        <aside className={`h-fit rounded-2xl border p-3 shadow-sm backdrop-blur lg:sticky lg:top-24 ${theme === "dark" ? "border-violet-900/60 bg-[#111427]/90" : "border-slate-200/80 bg-white/90"}`}>
+        <aside className={`h-fit rounded-2xl border p-3 shadow-sm backdrop-blur lg:sticky lg:top-24 ${theme === "dark" ? "border-violet-900/60 bg-[#000721]/90" : "border-slate-200/80 bg-white/90"}`}>
           <p className={`mb-2 text-xs font-semibold uppercase tracking-[0.18em] ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Modules</p>
           <div className="space-y-1.5">
             {tabs.map((tab) => (
@@ -3213,16 +3222,16 @@ function SimpleLeaveTable({ rows, role, onReview, onCancel, onCancelByManager, c
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full text-sm">
-        <thead><tr className="border-b border-slate-200 text-left dark:border-slate-700"><th className="px-2 py-2">Employee</th><th className="px-2 py-2">Dates</th><th className="px-2 py-2">Reason</th><th className="px-2 py-2">Status</th><th className="px-2 py-2">History</th>{role === "manager" || role === "employee" ? <th className="px-2 py-2">Actions</th> : null}</tr></thead>
+      <table className="min-w-full text-sm text-white">
+        <thead><tr className="border-b border-slate-200 text-left text-white dark:border-slate-700"><th className="px-2 py-2 text-white">Employee</th><th className="px-2 py-2 text-white">Dates</th><th className="px-2 py-2 text-white">Reason</th><th className="px-2 py-2 text-white">Status</th><th className="px-2 py-2 text-white">History</th>{role === "manager" || role === "employee" ? <th className="px-2 py-2 text-white">Actions</th> : null}</tr></thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="border-b border-slate-100 dark:border-slate-800">
-              <td className="px-2 py-2">{row.employeeName}</td>
-              <td className="px-2 py-2">{formatDate(row.fromDateValue)} - {formatDate(row.toDateValue)}</td>
-              <td className="px-2 py-2">{row.reason}</td>
+              <td className="px-2 py-2 text-white">{row.employeeName}</td>
+              <td className="px-2 py-2 text-white">{formatDate(row.fromDateValue)} - {formatDate(row.toDateValue)}</td>
+              <td className="px-2 py-2 text-white">{row.reason}</td>
               <td className="px-2 py-2"><span className={`rounded px-2 py-1 text-xs ${statusClass[row.status] || "bg-slate-100"}`}>{row.status}</span></td>
-              <td className="px-2 py-2"><LeaveHistory row={row} /></td>
+              <td className="px-2 py-2 text-white"><LeaveHistory row={row} /></td>
               {role === "manager" || role === "employee" ? (
                 <td className="px-2 py-2">
                   {role === "manager" && (row.status === "pending" || row.status === "pending_l1" || row.status === "pending_l2") ? (
