@@ -107,7 +107,7 @@ const formatDuration = (msValue = 0) => {
 };
 const BREAK_TARGET_MINUTES = {
   Tea: 15,
-  Lunch: 45,
+  Lunch: 30,
   Evening: 15,
   Breather: 10,
 };
@@ -654,14 +654,26 @@ export default function PortalPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const savedTheme = localStorage.getItem("portal_theme");
-    const initialTheme = savedTheme || "light";
+    const initialTheme = savedTheme === "dark" || savedTheme === "light" ? savedTheme : "light";
     setTheme(initialTheme);
+    document.documentElement.classList.remove("dark", "light");
+    document.documentElement.classList.add(initialTheme);
     document.documentElement.classList.toggle("dark", initialTheme === "dark");
+    if (document.body) {
+      document.body.classList.toggle("dark", initialTheme === "dark");
+    }
+    document.documentElement.style.colorScheme = initialTheme;
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    document.documentElement.classList.remove("dark", "light");
+    document.documentElement.classList.add(theme);
     document.documentElement.classList.toggle("dark", theme === "dark");
+    if (document.body) {
+      document.body.classList.toggle("dark", theme === "dark");
+    }
+    document.documentElement.style.colorScheme = theme;
     localStorage.setItem("portal_theme", theme);
   }, [theme]);
 
@@ -1953,14 +1965,14 @@ export default function PortalPage() {
                   <div className={`rounded-lg border p-3 ${theme === "dark" ? "border-violet-900/60 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className={`rounded-md border p-3 ${theme === "dark" ? "border-slate-800 bg-slate-950/60" : "border-slate-200 bg-slate-50"}`}>
-                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-white">Shift Timer</p>
-                        <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{shiftRunning ? formatDuration(shiftElapsedMs) : "00:00:00"}</p>
-                        <p className="mt-1 text-xs text-slate-600 dark:text-white">{shiftRunning ? `Live since shift start (${FIXED_SHIFT_LABEL})` : `Fixed shift ${FIXED_SHIFT_LABEL}`}</p>
+                        <p className={`text-xs font-medium uppercase tracking-wide ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Shift Timer</p>
+                        <p className={`mt-1 text-2xl font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{shiftRunning ? formatDuration(shiftElapsedMs) : "00:00:00"}</p>
+                        <p className={`mt-1 text-xs ${theme === "dark" ? "text-white" : "text-slate-600"}`}>{shiftRunning ? `Live since shift start (${FIXED_SHIFT_LABEL})` : `Fixed shift ${FIXED_SHIFT_LABEL}`}</p>
                       </div>
 
                       <div className={`rounded-md border p-3 ${theme === "dark" ? "border-slate-800 bg-slate-950/60" : "border-slate-200 bg-slate-50"}`}>
                         <div className="mb-1 flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-white">Break Progress</p>
+                          <p className={`text-xs font-medium uppercase tracking-wide ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Break Progress</p>
                           {activeBreakType ? (
                             <span
                               className={`rounded px-2 py-0.5 text-[11px] font-medium ${
@@ -1982,14 +1994,14 @@ export default function PortalPage() {
                               />
                             </div>
                             <div className="mt-2 flex items-center justify-between text-xs">
-                              <span className="text-slate-700 dark:text-white">Elapsed: {formatDuration(breakElapsedMs)}</span>
-                              <span className={isBreakOverrun ? "text-red-700 dark:text-white" : "text-slate-600 dark:text-white"}>
+                              <span className={theme === "dark" ? "text-white" : "text-slate-700"}>Elapsed: {formatDuration(breakElapsedMs)}</span>
+                              <span className={isBreakOverrun ? (theme === "dark" ? "text-white" : "text-red-700") : (theme === "dark" ? "text-white" : "text-slate-600")}>
                                 {isBreakOverrun ? `Over by ${formatDuration(breakElapsedMs - breakTargetMinutes * 60000)}` : `Left ${formatDuration(breakRemainingMs)}`}
                               </span>
                             </div>
                           </>
                         ) : (
-                          <p className="text-xs text-slate-600 dark:text-white">Start any break to see live progress.</p>
+                          <p className={`text-xs ${theme === "dark" ? "text-white" : "text-slate-600"}`}>Start any break to see live progress.</p>
                         )}
                       </div>
                     </div>
@@ -2049,7 +2061,7 @@ export default function PortalPage() {
 
               {role === "manager" ? (
                 <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/60">
-                  <p className="mb-2 text-sm font-semibold text-slate-800 dark:text-white">Live Break Status</p>
+                  <p className={`mb-2 text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-800"}`}>Live Break Status</p>
                   {liveBreakRows.length ? (
                     <div className="grid gap-2 sm:grid-cols-2">
                       {liveBreakRows.map((row, index) => {
@@ -2057,15 +2069,15 @@ export default function PortalPage() {
                         const elapsedMs = Math.max(0, clockTick - startedAt.getTime());
                         return (
                           <div key={`live-break-${row.id || row.employeeId || index}`} className="rounded-md border border-blue-200 bg-blue-50 p-2 dark:border-violet-700/50 dark:bg-violet-500/10">
-                            <p className="text-sm font-medium text-slate-900 dark:text-white">{row.employeeName || row.empName || row.employeeId}</p>
-                            <p className="text-xs text-slate-700 dark:text-white">{row.breakType || "Break"} break is active</p>
-                            <p className="text-xs font-semibold text-blue-700 dark:text-white">Elapsed: {formatDuration(elapsedMs)}</p>
+                            <p className={`text-sm font-medium ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{row.employeeName || row.empName || row.employeeId}</p>
+                            <p className={`text-xs ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.breakType || "Break"} break is active</p>
+                            <p className={`text-xs font-semibold ${theme === "dark" ? "text-white" : "text-blue-700"}`}>Elapsed: {formatDuration(elapsedMs)}</p>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-500 dark:text-white">No one is on break right now.</p>
+                    <p className={`text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No one is on break right now.</p>
                   )}
                 </div>
               ) : null}
@@ -2074,27 +2086,27 @@ export default function PortalPage() {
                 <table className="min-w-full overflow-hidden rounded-lg text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left dark:border-slate-700 dark:bg-slate-900/70">
-                      <th className="px-3 py-2 text-slate-700 dark:text-white">Employee</th>
-                      <th className="px-3 py-2 text-slate-700 dark:text-white">Action</th>
-                      <th className="px-3 py-2 text-slate-700 dark:text-white">Date</th>
-                      <th className="px-3 py-2 text-slate-700 dark:text-white">Time</th>
+                      <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Employee</th>
+                      <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Action</th>
+                      <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Date</th>
+                      <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Time</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(role === "manager" ? todayAttendanceRows : myAttendanceRows).map((row, index) => (
                       <tr key={`${row.id || row.empId}-${index}`} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/35 dark:border-slate-800 dark:odd:bg-slate-900/40 dark:even:bg-slate-900/20">
-                        <td className="px-3 py-2 text-slate-700 dark:text-white">{row.empName}</td>
+                        <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.empName}</td>
                         <td className="px-3 py-2">
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-white">{formatActionLabel(row.action)}</span>
+                          <span className={`rounded-full px-2 py-1 text-xs font-medium ${theme === "dark" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}>{formatActionLabel(row.action)}</span>
                         </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-white">{formatDate(row.date)}</td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-white">{row.time || new Date(rowTime(row)).toLocaleTimeString()}</td>
+                        <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{formatDate(row.date)}</td>
+                        <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.time || new Date(rowTime(row)).toLocaleTimeString()}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 {(role === "manager" ? todayAttendanceRows : myAttendanceRows).length === 0 ? (
-                  <p className="py-4 text-sm text-slate-500 dark:text-white">No attendance records for today.</p>
+                  <p className={`py-4 text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No attendance records for today.</p>
                 ) : null}
               </div>
             </SectionCard>
@@ -3222,16 +3234,16 @@ function SimpleLeaveTable({ rows, role, onReview, onCancel, onCancelByManager, c
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full text-sm text-white">
-        <thead><tr className="border-b border-slate-200 text-left text-white dark:border-slate-700"><th className="px-2 py-2 text-white">Employee</th><th className="px-2 py-2 text-white">Dates</th><th className="px-2 py-2 text-white">Reason</th><th className="px-2 py-2 text-white">Status</th><th className="px-2 py-2 text-white">History</th>{role === "manager" || role === "employee" ? <th className="px-2 py-2 text-white">Actions</th> : null}</tr></thead>
+      <table className="min-w-full text-sm text-slate-700 dark:text-slate-100">
+        <thead><tr className="border-b border-slate-200 text-left text-slate-700 dark:border-slate-700 dark:text-slate-100"><th className="px-2 py-2 text-slate-700 dark:text-slate-100">Employee</th><th className="px-2 py-2 text-slate-700 dark:text-slate-100">Dates</th><th className="px-2 py-2 text-slate-700 dark:text-slate-100">Reason</th><th className="px-2 py-2 text-slate-700 dark:text-slate-100">Status</th><th className="px-2 py-2 text-slate-700 dark:text-slate-100">History</th>{role === "manager" || role === "employee" ? <th className="px-2 py-2 text-slate-700 dark:text-slate-100">Actions</th> : null}</tr></thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="border-b border-slate-100 dark:border-slate-800">
-              <td className="px-2 py-2 text-white">{row.employeeName}</td>
-              <td className="px-2 py-2 text-white">{formatDate(row.fromDateValue)} - {formatDate(row.toDateValue)}</td>
-              <td className="px-2 py-2 text-white">{row.reason}</td>
+              <td className="px-2 py-2 text-slate-700 dark:text-slate-100">{row.employeeName}</td>
+              <td className="px-2 py-2 text-slate-700 dark:text-slate-100">{formatDate(row.fromDateValue)} - {formatDate(row.toDateValue)}</td>
+              <td className="px-2 py-2 text-slate-700 dark:text-slate-100">{row.reason}</td>
               <td className="px-2 py-2"><span className={`rounded px-2 py-1 text-xs ${statusClass[row.status] || "bg-slate-100"}`}>{row.status}</span></td>
-              <td className="px-2 py-2 text-white"><LeaveHistory row={row} /></td>
+              <td className="px-2 py-2 text-slate-700 dark:text-slate-100"><LeaveHistory row={row} /></td>
               {role === "manager" || role === "employee" ? (
                 <td className="px-2 py-2">
                   {role === "manager" && (row.status === "pending" || row.status === "pending_l1" || row.status === "pending_l2") ? (

@@ -31,20 +31,6 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Force all visible text to white across the app */
-body,
-h1, h2, h3, h4, h5, h6,
-p, span, a, label, small, strong, em,
-li, dt, dd, th, td,
-button, input, textarea, select {
-  color: #ffffff !important;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.75) !important;
-}
-
 button {
   cursor: pointer;
 }
