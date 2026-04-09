@@ -152,6 +152,7 @@ const HOLIDAY_MAP = {
   "2026-01-14": "Makar Sankranti",
   "2026-01-26": "Republic Day",
   "2026-03-04": "Holi",
+  "2026-04-14": "Dr. Babasaheb Ambedkar Jayanti",
   "2026-08-15": "Independence Day",
   "2026-08-29": "Ganesh Chaturthi",
   "2026-10-02": "Gandhi Jayanti",
