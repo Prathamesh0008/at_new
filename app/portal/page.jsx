@@ -1634,7 +1634,39 @@ export default function PortalPage() {
     user?.name,
   ]);
 
-  if (loading) return <div className="p-8 text-center text-slate-600 dark:text-white">Loading portal...</div>;
+  if (loading) {
+    return (
+      <div
+        className={`relative flex min-h-screen items-center justify-center overflow-hidden px-4 ${
+          theme === "dark"
+            ? "bg-[radial-gradient(circle_at_top,_#A346FF_0%,_#000721_58%,_#000721_100%)]"
+            : "bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f8fafc_40%,_#f8fafc_100%)]"
+        }`}
+      >
+        <div className="pointer-events-none absolute -top-12 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-violet-500/30 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-8 right-8 h-28 w-28 rounded-full bg-sky-400/30 blur-2xl" />
+
+        <div
+          className={`relative w-full max-w-md rounded-2xl border p-6 text-center shadow-2xl backdrop-blur ${
+            theme === "dark"
+              ? "border-violet-400/40 bg-slate-900/70 text-white"
+              : "border-slate-200 bg-white/85 text-slate-900"
+          }`}
+        >
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-violet-600/90 shadow-lg shadow-violet-600/30">
+            <Loader2 className="h-7 w-7 animate-spin text-white" />
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight">Preparing Your Portal</h2>
+          <p className={`mt-2 text-sm ${theme === "dark" ? "text-slate-200" : "text-slate-600"}`}>
+            Syncing your dashboard, tasks, and attendance.
+          </p>
+          <div className={`mt-5 h-2 w-full overflow-hidden rounded-full ${theme === "dark" ? "bg-slate-800" : "bg-slate-200"}`}>
+            <div className="h-full w-1/2 animate-pulse rounded-full bg-violet-500" />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!isAuthenticated) return <Login />;
 
   const getNotificationMeta = (type) => notificationMeta[type] || notificationMeta.info;

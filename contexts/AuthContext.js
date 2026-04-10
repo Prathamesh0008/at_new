@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { employees } from '@/utils/constants';
 import { normalizeRole } from '@/utils/roles';
 
@@ -36,9 +36,16 @@ const getStoredUser = () => {
 };
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => getStoredUser());
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredUser()));
-  const [loading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const storedUser = getStoredUser();
+    setUser(storedUser);
+    setIsAuthenticated(Boolean(storedUser));
+    setLoading(false);
+  }, []);
 
   const login = (employeeId, password) => {
     const normalizedEmployeeId = String(employeeId || '').trim().toUpperCase();
@@ -63,6 +70,7 @@ export function AuthProvider({ children }) {
 
     setUser(userData);
     setIsAuthenticated(true);
+    setLoading(false);
     localStorage.setItem('user', JSON.stringify(userData));
 
     return { success: true, user: userData };
@@ -71,6 +79,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
+    setLoading(false);
     localStorage.removeItem('user');
   };
 
