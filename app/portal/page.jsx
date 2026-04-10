@@ -525,6 +525,12 @@ export default function PortalPage() {
     setMessage(text);
     setTimeout(() => setMessage(""), 3500);
   };
+  const resumeNotificationAudio = () => {
+    const context = notificationAudioContextRef.current;
+    if (context?.state === "suspended") {
+      context.resume().catch(() => {});
+    }
+  };
   const playLoudNotificationSound = () => {
     if (typeof window === "undefined") return;
 
@@ -538,9 +544,7 @@ export default function PortalPage() {
     const context = notificationAudioContextRef.current;
     if (!context) return;
 
-    if (context.state === "suspended") {
-      context.resume().catch(() => {});
-    }
+    resumeNotificationAudio();
 
     const beep = (frequency, delaySeconds, durationSeconds = 0.2) => {
       const now = context.currentTime;
@@ -565,6 +569,8 @@ export default function PortalPage() {
     beep(1020, 0, 0.22);
     beep(1140, 0.28, 0.22);
     beep(980, 0.56, 0.26);
+
+    if (navigator?.vibrate) navigator.vibrate([120, 80, 120]);
   };
 
   useEffect(() => {
@@ -682,9 +688,7 @@ export default function PortalPage() {
 
     const unlockAudio = () => {
       notificationAudioUnlockedRef.current = true;
-      if (notificationAudioContextRef.current?.state === "suspended") {
-        notificationAudioContextRef.current.resume().catch(() => {});
-      }
+      resumeNotificationAudio();
       if (pendingNotificationSoundRef.current) {
         playLoudNotificationSound();
         pendingNotificationSoundRef.current = false;
@@ -698,9 +702,13 @@ export default function PortalPage() {
 
     window.addEventListener("pointerdown", unlockAudio);
     window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("focus", resumeNotificationAudio);
+    document.addEventListener("visibilitychange", resumeNotificationAudio);
     return () => {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("focus", resumeNotificationAudio);
+      document.removeEventListener("visibilitychange", resumeNotificationAudio);
     };
   }, []);
 
@@ -1919,6 +1927,16 @@ export default function PortalPage() {
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <div className={`text-xs ${theme === "dark" ? "text-white" : "text-slate-500"}`}>{unreadCount} unread</div>
+                    <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        notificationAudioUnlockedRef.current = true;
+                        playLoudNotificationSound();
+                      }}
+                      className={btnTinyPrimary}
+                    >
+                      Test sound
+                    </button>
                     <div className={`rounded-md border p-0.5 ${theme === "dark" ? "border-violet-900/70 bg-slate-900/60" : "border-slate-200"}`}>
                     <button
                       onClick={() => setNotificationFilter("all")}
@@ -1932,6 +1950,7 @@ export default function PortalPage() {
                     >
                         Unread
                       </button>
+                    </div>
                     </div>
                   </div>
                 </div>
