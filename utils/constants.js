@@ -64,7 +64,7 @@ export const employees = [
     id: "NTS-008", 
     name: "Chotelal Singh", 
     shift: "10:00 AM - 7:00 PM",
-    email: "chotelal@asblogi.com",
+    email: "chhotelal@asblogi.com",
     phone: "+91 9876543217",
     role: "agent",
     department: "Operations",

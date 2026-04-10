@@ -270,6 +270,12 @@ export default function PortalPage() {
   const [notificationFilter, setNotificationFilter] = useState("unread");
   const [notificationsBusy, setNotificationsBusy] = useState(false);
   const notificationsRef = useRef(null);
+  const notificationAudioContextRef = useRef(null);
+  const notificationAudioUnlockedRef = useRef(false);
+  const notificationUnreadIdsRef = useRef(new Set());
+  const notificationBootstrappedRef = useRef(false);
+  const highPriorityAlertedTaskIdRef = useRef("");
+  const activeLockedTaskIdRef = useRef("");
   const autoShiftCloseKeyRef = useRef("");
   const employeeDefaultTabAppliedRef = useRef(false);
 
@@ -518,6 +524,47 @@ export default function PortalPage() {
     setMessage(text);
     setTimeout(() => setMessage(""), 3500);
   };
+  const playLoudNotificationSound = () => {
+    if (typeof window === "undefined") return;
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    if (!notificationAudioContextRef.current) {
+      notificationAudioContextRef.current = new AudioContextClass();
+    }
+
+    const context = notificationAudioContextRef.current;
+    if (!context) return;
+
+    if (context.state === "suspended") {
+      context.resume().catch(() => {});
+    }
+
+    const beep = (frequency, delaySeconds, durationSeconds = 0.2) => {
+      const now = context.currentTime;
+      const oscillator = context.createOscillator();
+      const gainNode = context.createGain();
+
+      oscillator.type = "square";
+      oscillator.frequency.setValueAtTime(frequency, now + delaySeconds);
+
+      gainNode.gain.setValueAtTime(0.0001, now + delaySeconds);
+      gainNode.gain.exponentialRampToValueAtTime(0.95, now + delaySeconds + 0.015);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + delaySeconds + durationSeconds);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(context.destination);
+
+      oscillator.start(now + delaySeconds);
+      oscillator.stop(now + delaySeconds + durationSeconds + 0.03);
+    };
+
+    // Triple burst for a louder, more noticeable alert.
+    beep(1020, 0, 0.22);
+    beep(1140, 0.28, 0.22);
+    beep(980, 0.56, 0.26);
+  };
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
@@ -603,6 +650,71 @@ export default function PortalPage() {
       setFlash("Failed to load portal data.");
     });
   }, [isAuthenticated, user?.id, role, refreshToken]);
+
+  useEffect(() => {
+    activeLockedTaskIdRef.current = lockedTask?.id || "";
+  }, [lockedTask?.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated || role !== "employee") return;
+    if (!lockedTask?.id) {
+      highPriorityAlertedTaskIdRef.current = "";
+      return;
+    }
+    if (highPriorityAlertedTaskIdRef.current === lockedTask.id) return;
+    if (!notificationAudioUnlockedRef.current) return;
+
+    playLoudNotificationSound();
+    highPriorityAlertedTaskIdRef.current = lockedTask.id;
+  }, [isAuthenticated, lockedTask?.id, role]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const unlockAudio = () => {
+      notificationAudioUnlockedRef.current = true;
+      if (notificationAudioContextRef.current?.state === "suspended") {
+        notificationAudioContextRef.current.resume().catch(() => {});
+      }
+      const activeLockedTaskId = activeLockedTaskIdRef.current;
+      if (activeLockedTaskId && highPriorityAlertedTaskIdRef.current !== activeLockedTaskId) {
+        playLoudNotificationSound();
+        highPriorityAlertedTaskIdRef.current = activeLockedTaskId;
+      }
+    };
+
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    const unreadIds = new Set(
+      notifications
+        .filter((note) => !note.read)
+        .map((note) => note.id)
+        .filter(Boolean)
+    );
+
+    if (!notificationBootstrappedRef.current) {
+      notificationUnreadIdsRef.current = unreadIds;
+      notificationBootstrappedRef.current = true;
+      return;
+    }
+
+    const hadUnread = notificationUnreadIdsRef.current;
+    const hasNewUnread = Array.from(unreadIds).some((id) => !hadUnread.has(id));
+
+    if (hasNewUnread && notificationAudioUnlockedRef.current) {
+      playLoudNotificationSound();
+    }
+
+    notificationUnreadIdsRef.current = unreadIds;
+  }, [isAuthenticated, notifications, user?.id]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return undefined;
@@ -3176,6 +3288,8 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
   const reopening = busy && loadingAction === `task-${task.id}-assigned`;
   const canEmployeeStart = task.status === "assigned";
   const canEmployeeComplete = task.status === "assigned" || task.status === "in_progress";
+  const assignedToLabel = String(task.assignedToName || task.employeeName || task.assignedTo || "-").trim() || "-";
+  const assignedByLabel = String(task.assignedByName || task.assignedBy || "Manager").trim() || "Manager";
   const priorityTone = task.priority === "high"
     ? "bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-white"
     : task.priority === "low"
@@ -3190,6 +3304,9 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
         <div>
           <p className="font-medium text-slate-900 dark:text-white">{task.title}</p>
           <p className="text-sm text-slate-600 dark:text-white">{task.details}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+            Assigned to: <span className="font-medium">{assignedToLabel}</span> | Assigned by: <span className="font-medium">{assignedByLabel}</span>
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${priorityTone}`}>{task.priority || "medium"} priority</span>
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${isOverdue ? "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-white"}`}>
