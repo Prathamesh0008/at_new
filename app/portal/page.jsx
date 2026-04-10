@@ -274,6 +274,7 @@ export default function PortalPage() {
   const notificationAudioUnlockedRef = useRef(false);
   const notificationUnreadIdsRef = useRef(new Set());
   const notificationBootstrappedRef = useRef(false);
+  const pendingNotificationSoundRef = useRef(false);
   const highPriorityAlertedTaskIdRef = useRef("");
   const activeLockedTaskIdRef = useRef("");
   const autoShiftCloseKeyRef = useRef("");
@@ -633,7 +634,8 @@ export default function PortalPage() {
         fetchPortalSettings(),
       ]);
 
-      setNotifications(noti.slice(0, 10));
+      // Keep full notification list so sound detection never misses new items.
+      setNotifications(noti);
       setLeaveRows(leaves);
       setTaskRows(tasks);
       setWorksheetRows(worksheets);
@@ -650,6 +652,13 @@ export default function PortalPage() {
       setFlash("Failed to load portal data.");
     });
   }, [isAuthenticated, user?.id, role, refreshToken]);
+
+  useEffect(() => {
+    // Reset sound tracking when account/role changes to avoid stale comparisons.
+    notificationUnreadIdsRef.current = new Set();
+    notificationBootstrappedRef.current = false;
+    pendingNotificationSoundRef.current = false;
+  }, [role, user?.id]);
 
   useEffect(() => {
     activeLockedTaskIdRef.current = lockedTask?.id || "";
@@ -675,6 +684,10 @@ export default function PortalPage() {
       notificationAudioUnlockedRef.current = true;
       if (notificationAudioContextRef.current?.state === "suspended") {
         notificationAudioContextRef.current.resume().catch(() => {});
+      }
+      if (pendingNotificationSoundRef.current) {
+        playLoudNotificationSound();
+        pendingNotificationSoundRef.current = false;
       }
       const activeLockedTaskId = activeLockedTaskIdRef.current;
       if (activeLockedTaskId && highPriorityAlertedTaskIdRef.current !== activeLockedTaskId) {
@@ -709,8 +722,12 @@ export default function PortalPage() {
     const hadUnread = notificationUnreadIdsRef.current;
     const hasNewUnread = Array.from(unreadIds).some((id) => !hadUnread.has(id));
 
-    if (hasNewUnread && notificationAudioUnlockedRef.current) {
-      playLoudNotificationSound();
+    if (hasNewUnread) {
+      if (notificationAudioUnlockedRef.current) {
+        playLoudNotificationSound();
+      } else {
+        pendingNotificationSoundRef.current = true;
+      }
     }
 
     notificationUnreadIdsRef.current = unreadIds;
