@@ -96,6 +96,7 @@ const SHIFT_START_HOUR = 10;
 const SHIFT_END_HOUR = 19;
 const SHIFT_END_MINUTE = 0;
 const AUTO_SYNC_MS = 15000;
+const NOTIFICATION_SYNC_MS = 4000;
 const LIVE_BREAK_POLL_MS = 4000;
 const formatDuration = (msValue = 0) => {
   const ms = Math.max(0, msValue);
@@ -627,8 +628,7 @@ export default function PortalPage() {
     if (!isAuthenticated || !user?.id) return;
 
     const loadData = async () => {
-      const [noti, leaves, tasks, worksheets, salaryRequests, salarySlips, counts, attendance, breaks, settings] = await Promise.all([
-        fetchNotifications({ recipientId: user.id, role }),
+      const [leaves, tasks, worksheets, salaryRequests, salarySlips, counts, attendance, breaks, settings] = await Promise.all([
         fetchLeaveRequests(role === "manager" ? {} : { employeeId: user.id }),
         fetchTasks(role === "manager" ? {} : { assignedTo: user.id }),
         fetchWorksheets(role === "manager" ? {} : { employeeId: user.id }),
@@ -640,8 +640,6 @@ export default function PortalPage() {
         fetchPortalSettings(),
       ]);
 
-      // Keep full notification list so sound detection never misses new items.
-      setNotifications(noti);
       setLeaveRows(leaves);
       setTaskRows(tasks);
       setWorksheetRows(worksheets);
@@ -658,6 +656,28 @@ export default function PortalPage() {
       setFlash("Failed to load portal data.");
     });
   }, [isAuthenticated, user?.id, role, refreshToken]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return undefined;
+    let cancelled = false;
+
+    const loadNotifications = async () => {
+      try {
+        const noti = await fetchNotifications({ recipientId: user.id, role });
+        if (!cancelled) setNotifications(noti);
+      } catch (error) {
+        if (!cancelled) console.error(error);
+      }
+    };
+
+    loadNotifications();
+    const interval = setInterval(loadNotifications, NOTIFICATION_SYNC_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, role, user?.id]);
 
   useEffect(() => {
     // Reset sound tracking when account/role changes to avoid stale comparisons.
