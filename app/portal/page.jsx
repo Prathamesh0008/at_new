@@ -3576,7 +3576,7 @@ function SimpleLeaveTable({ rows, role, onReview, onCancel, onEditReason, onCanc
 
 function LeaveHistory({ row }) {
   const history = (row.approvalTrail || []).filter((item) => item?.status && item.status !== "pending" && item?.at);
-  const appliedAt = row.createdAtDate || row.createdAt || null;
+  const appliedAt = row.appliedAtDate || row.createdAtDate || row.createdAt || row.appliedAt || row.managerAssignedAt || null;
 
   if (!history.length && !appliedAt) {
     return <span className="text-xs text-slate-500 dark:text-white">No history available</span>;
