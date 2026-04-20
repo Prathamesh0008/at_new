@@ -53,6 +53,7 @@ import {
   fetchWorksheets,
   reviewLeaveRequest,
   submitLeaveRequest,
+  updateLeaveReason,
   updateTaskStatus,
   upsertWorksheet,
 } from "@/lib/portal-helpers";
@@ -68,6 +69,18 @@ const toLocalDateKey = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 const formatDate = (date) => (date ? new Date(date).toLocaleDateString("en-IN") : "-");
+const formatDateTime = (date) =>
+  date
+    ? new Date(date).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    })
+    : "-";
 const toMonthInputValue = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 const formatMonthLabel = (monthValue) => {
   if (!monthValue) return "-";
@@ -2563,6 +2576,21 @@ export default function PortalPage() {
                     setLoadingAction("");
                   }
                 }}
+                onEditReason={async (id, reason) => {
+                  setBusy(true);
+                  setLoadingAction(`leave-edit-${id}`);
+                  try {
+                    await updateLeaveReason({ leaveId: id, employeeId: user.id, employeeName: user.name, reason });
+                    setFlash("Leave reason updated.");
+                    refresh();
+                  } catch (error) {
+                    console.error(error);
+                    setFlash(error?.message || "Could not update leave reason.");
+                  } finally {
+                    setBusy(false);
+                    setLoadingAction("");
+                  }
+                }}
                 onCancelByManager={async (id, comment) => {
                   setBusy(true);
                   setLoadingAction(`leave-manager-cancel-${id}`);
@@ -3435,8 +3463,9 @@ function WorksheetCard({ row }) {
   );
 }
 
-function SimpleLeaveTable({ rows, role, onReview, onCancel, onCancelByManager, currentUserId, busy, loadingAction }) {
+function SimpleLeaveTable({ rows, role, onReview, onCancel, onEditReason, onCancelByManager, currentUserId, busy, loadingAction }) {
   const [comments, setComments] = useState({});
+  const [reasonDrafts, setReasonDrafts] = useState({});
 
   return (
     <div className="overflow-x-auto">
@@ -3485,17 +3514,42 @@ function SimpleLeaveTable({ rows, role, onReview, onCancel, onCancelByManager, c
                     </>
                   ) : null}
                   {role === "employee" && row.employeeId === currentUserId && !row.managerAssigned && ["pending", "approved", "pending_l1", "pending_l2"].includes(row.status) ? (
-                    <button
-                      onClick={async () => {
-                        await onCancel?.(row.id, comments[row.id] || "");
-                        setComments((prev) => ({ ...prev, [row.id]: "" }));
-                      }}
-                      disabled={busy}
-                      className={btnTinyDanger}
-                    >
-                      {busy && loadingAction === `leave-cancel-${row.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                      {busy && loadingAction === `leave-cancel-${row.id}` ? "Cancelling..." : "Cancel Leave"}
-                    </button>
+                    <div className="space-y-2">
+                      {["pending", "pending_l1", "pending_l2"].includes(row.status) ? (
+                        <>
+                          <input
+                            value={reasonDrafts[row.id] ?? row.reason ?? ""}
+                            onChange={(event) => setReasonDrafts((prev) => ({ ...prev, [row.id]: event.target.value }))}
+                            placeholder="Edit reason"
+                            className="w-full rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                          />
+                          <button
+                            onClick={async () => {
+                              const nextReason = String(reasonDrafts[row.id] ?? row.reason ?? "").trim();
+                              if (!nextReason) return;
+                              await onEditReason?.(row.id, nextReason);
+                              setReasonDrafts((prev) => ({ ...prev, [row.id]: nextReason }));
+                            }}
+                            disabled={busy || !String(reasonDrafts[row.id] ?? row.reason ?? "").trim()}
+                            className={btnTinyPrimary}
+                          >
+                            {busy && loadingAction === `leave-edit-${row.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                            {busy && loadingAction === `leave-edit-${row.id}` ? "Updating..." : "Update Reason"}
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        onClick={async () => {
+                          await onCancel?.(row.id, comments[row.id] || "");
+                          setComments((prev) => ({ ...prev, [row.id]: "" }));
+                        }}
+                        disabled={busy}
+                        className={btnTinyDanger}
+                      >
+                        {busy && loadingAction === `leave-cancel-${row.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        {busy && loadingAction === `leave-cancel-${row.id}` ? "Cancelling..." : "Cancel Leave"}
+                      </button>
+                    </div>
                   ) : null}
                   {role === "manager" && row.managerAssigned && row.status === "approved" ? (
                     <button
@@ -3522,13 +3576,19 @@ function SimpleLeaveTable({ rows, role, onReview, onCancel, onCancelByManager, c
 
 function LeaveHistory({ row }) {
   const history = (row.approvalTrail || []).filter((item) => item?.status && item.status !== "pending" && item?.at);
+  const appliedAt = row.createdAtDate || row.createdAt || null;
 
-  if (!history.length) {
-    return <span className="text-xs text-slate-500 dark:text-white">No review history</span>;
+  if (!history.length && !appliedAt) {
+    return <span className="text-xs text-slate-500 dark:text-white">No history available</span>;
   }
 
   return (
     <div className="space-y-1">
+      {appliedAt ? (
+        <div className="text-xs text-slate-600 dark:text-white">
+          <span className="font-medium">Applied on</span> {formatDateTime(appliedAt)}
+        </div>
+      ) : null}
       {history.map((item, index) => (
         <div key={`${row.id}-trail-${index}`} className="text-xs text-slate-600 dark:text-white">
           <span className="font-medium">{item.status}</span> by {item.approverName || "Manager"} on {formatDate(item.at)}
