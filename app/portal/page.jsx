@@ -111,6 +111,14 @@ const SHIFT_END_MINUTE = 0;
 const AUTO_SYNC_MS = 15000;
 const NOTIFICATION_SYNC_MS = 4000;
 const LIVE_BREAK_POLL_MS = 4000;
+const TASK_IMAGE_MAX_BYTES = 500 * 1024;
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
 const formatDuration = (msValue = 0) => {
   const ms = Math.max(0, msValue);
   const totalSeconds = Math.floor(ms / 1000);
@@ -338,7 +346,15 @@ export default function PortalPage() {
   const [managerHalfDayForm, setManagerHalfDayForm] = useState({ employeeId: "", date: getToday(), reason: "Personal leave" });
   const [saturdayHolidayDate, setSaturdayHolidayDate] = useState(getToday());
   const [saturdayHolidayDates, setSaturdayHolidayDates] = useState([]);
-  const [taskForm, setTaskForm] = useState({ title: "", details: "", assignedTo: "", priority: "medium", dueDate: "" });
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    details: "",
+    assignedTo: "",
+    priority: "medium",
+    dueDate: "",
+    imageDataUrl: "",
+    imageName: "",
+  });
   const [taskSearch, setTaskSearch] = useState("");
   const [taskStatusFilter, setTaskStatusFilter] = useState("all");
   const [taskPriorityFilter, setTaskPriorityFilter] = useState("all");
@@ -1253,7 +1269,7 @@ export default function PortalPage() {
     setLoadingAction("assign-task");
     try {
       await createTask({ ...taskForm, assignedToName: selectedEmployee?.name || taskForm.assignedTo, assignedBy: user.id, assignedByName: user.name });
-      setTaskForm({ title: "", details: "", assignedTo: "", priority: "medium", dueDate: "" });
+      setTaskForm({ title: "", details: "", assignedTo: "", priority: "medium", dueDate: "", imageDataUrl: "", imageName: "" });
       setFlash("Task assigned.");
       refresh();
     } catch (error) {
@@ -1262,6 +1278,32 @@ export default function PortalPage() {
     } finally {
       setBusy(false);
       setLoadingAction("");
+    }
+  };
+
+  const handleTaskImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!String(file.type || "").startsWith("image/")) {
+      event.target.value = "";
+      setFlash("Please upload an image file only.");
+      return;
+    }
+
+    if (file.size > TASK_IMAGE_MAX_BYTES) {
+      event.target.value = "";
+      setFlash("Task image must be 500 KB or smaller.");
+      return;
+    }
+
+    try {
+      const imageDataUrl = await readFileAsDataUrl(file);
+      setTaskForm((prev) => ({ ...prev, imageDataUrl, imageName: file.name || "task-image" }));
+    } catch (error) {
+      console.error(error);
+      event.target.value = "";
+      setFlash("Could not process the image.");
     }
   };
 
@@ -2619,6 +2661,31 @@ export default function PortalPage() {
                   <input value={taskForm.details} onChange={(e) => setTaskForm((p) => ({ ...p, details: e.target.value }))} placeholder="Task details" className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white" />
                   <select value={taskForm.priority} onChange={(e) => setTaskForm((p) => ({ ...p, priority: e.target.value }))} className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white"><option value="high">High Priority</option><option value="medium">Medium Priority</option><option value="low">Low Priority</option></select>
                   <StyledDatePicker value={taskForm.dueDate} onChange={(nextDate) => setTaskForm((p) => ({ ...p, dueDate: nextDate }))} placeholder="Due date" className="w-full" theme={theme} />
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-3 dark:border-slate-600 dark:bg-slate-900/40 md:col-span-2">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-200">Task Picture (Optional)</label>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Upload a reference image so employee can understand task faster. Max 500 KB.</p>
+                      </div>
+                    </div>
+                    <input type="file" accept="image/*" onChange={handleTaskImageChange} className="block w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-slate-100 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:file:border-slate-600 dark:file:bg-slate-800 dark:file:text-white dark:hover:file:bg-slate-700" />
+                    {taskForm.imageDataUrl ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900/60">
+                        <img src={taskForm.imageDataUrl} alt={taskForm.imageName || "Task attachment preview"} className="h-20 w-20 rounded-md border border-slate-200 object-cover dark:border-slate-600" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-100">{taskForm.imageName || "Image attached"}</p>
+                          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-300">Attachment ready</p>
+                          <button
+                            type="button"
+                            onClick={() => setTaskForm((prev) => ({ ...prev, imageDataUrl: "", imageName: "" }))}
+                            className="mt-2 inline-flex rounded-md border border-rose-400 px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-500/70 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                          >
+                            Remove picture
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                   <button type="submit" disabled={busy} className={btnPrimary}>
                     {isLoading("assign-task") ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {isLoading("assign-task") ? "Assigning..." : "Assign Task"}
@@ -3366,6 +3433,7 @@ function Stat({ label, value }) {
 }
 
 function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const starting = busy && loadingAction === `task-${task.id}-in_progress`;
   const completing = busy && loadingAction === `task-${task.id}-completed`;
   const cancelling = busy && loadingAction === `task-${task.id}-cancelled`;
@@ -3381,6 +3449,7 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
       : "bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-white";
   const dueDate = task.dueDate ? new Date(task.dueDate) : null;
   const isOverdue = dueDate && dueDate.getTime() < Date.now() && task.status !== "completed";
+  const taskImageUrl = String(task.imageDataUrl || task.imageUrl || "").trim();
 
   return (
     <div className="mb-2 rounded-md border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-900/50">
@@ -3388,6 +3457,24 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
         <div>
           <p className="font-medium text-slate-900 dark:text-white">{task.title}</p>
           <p className="text-sm text-slate-600 dark:text-white">{task.details}</p>
+          {taskImageUrl ? (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-900/40">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">Attachment</p>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen((prev) => !prev)}
+                className="inline-flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800/80"
+              >
+                <img src={taskImageUrl} alt={`Task attachment for ${task.title}`} className="h-14 w-14 rounded border border-slate-200 object-cover dark:border-slate-600" />
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{previewOpen ? "Hide task picture" : "Open task picture"}</span>
+              </button>
+              {previewOpen ? (
+                <div className="mt-2 rounded-md border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60">
+                  <img src={taskImageUrl} alt={`Task preview for ${task.title}`} className="max-h-80 w-full rounded object-contain" />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
             Assigned to: <span className="font-medium">{assignedToLabel}</span> | Assigned by: <span className="font-medium">{assignedByLabel}</span>
           </p>
