@@ -131,7 +131,12 @@ const BREAK_TARGET_MINUTES = {
   Tea: 15,
   Lunch: 30,
   Evening: 15,
-  Breather: 10,
+};
+const BREAK_TYPES = Object.keys(BREAK_TARGET_MINUTES);
+const BREAK_TYPE_COLORS = {
+  Tea: "#06b6d4",
+  Lunch: "#22c55e",
+  Evening: "#f59e0b",
 };
 const DAILY_QUOTES = [
   "Small consistent progress beats perfect plans.",
@@ -1798,12 +1803,13 @@ export default function PortalPage() {
   const isBreakOverrun = activeBreakType && breakElapsedMs > breakTargetMinutes * 60000;
   const breakRemainingMs = Math.max(0, breakTargetMinutes * 60000 - breakElapsedMs);
   const totalBreakAllowanceMs = useMemo(
-    () => Object.values(BREAK_TARGET_MINUTES).reduce((sum, minutes) => sum + (Number(minutes) || 0), 0) * 60000,
+    () => BREAK_TYPES.reduce((sum, type) => sum + ((Number(BREAK_TARGET_MINUTES[type]) || 0) * 60000), 0),
     []
   );
-  const totalBreakUsedMs = useMemo(() => {
-    if (!user?.id) return 0;
+  const breakUsageByType = useMemo(() => {
+    if (!user?.id) return BREAK_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
     const today = getToday();
+    const usage = BREAK_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
     const todayRows = breakRows
       .filter((row) => {
         const rowEmployeeId = row.employeeId || row.empId;
@@ -1821,12 +1827,12 @@ export default function PortalPage() {
       });
 
     const activeByType = new Map();
-    let usedMs = 0;
 
     todayRows.forEach((row) => {
       const ts = row.timestamp instanceof Date ? row.timestamp.getTime() : new Date(row.timestamp || 0).getTime();
       if (!Number.isFinite(ts)) return;
-      const type = row.breakType || "General";
+      const type = row.breakType;
+      if (!type || !BREAK_TYPES.includes(type)) return;
       const rawAction = String(row.action || "").toLowerCase();
       const action = rawAction || (String(row.status || "").toLowerCase() === "active" ? "start" : "end");
 
@@ -1835,25 +1841,56 @@ export default function PortalPage() {
       } else if (action === "end") {
         const startedAt = activeByType.get(type);
         if (Number.isFinite(startedAt) && ts > startedAt) {
-          usedMs += ts - startedAt;
+          usage[type] += ts - startedAt;
         }
         activeByType.delete(type);
       }
     });
 
-    activeByType.forEach((startedAt) => {
-      usedMs += Math.max(0, clockTick - startedAt);
+    activeByType.forEach((startedAt, type) => {
+      usage[type] += Math.max(0, clockTick - startedAt);
     });
 
-    const hasActiveRowMatch = activeByType.has(activeBreakType);
-    if (activeBreakType && breakStartAt && !hasActiveRowMatch) {
-      usedMs += Math.max(0, clockTick - breakStartAt);
+    const hasActiveRowMatch = activeBreakType ? activeByType.has(activeBreakType) : false;
+    if (activeBreakType && BREAK_TYPES.includes(activeBreakType) && breakStartAt && !hasActiveRowMatch) {
+      usage[activeBreakType] += Math.max(0, clockTick - breakStartAt);
     }
 
-    return Math.max(0, usedMs);
+    return usage;
   }, [activeBreakType, breakRows, breakStartAt, clockTick, user?.id]);
+  const totalBreakUsedMs = useMemo(
+    () => BREAK_TYPES.reduce((sum, type) => sum + (breakUsageByType[type] || 0), 0),
+    [breakUsageByType]
+  );
   const totalBreakRemainingMs = Math.max(0, totalBreakAllowanceMs - totalBreakUsedMs);
   const totalBreakExceededMs = Math.max(0, totalBreakUsedMs - totalBreakAllowanceMs);
+  const breakDonutSegments = useMemo(() => {
+    const segmentSize = 100 / BREAK_TYPES.length;
+    const emptyColor = theme === "dark" ? "#1f2937" : "#e2e8f0";
+    let cursor = 0;
+    const stops = [];
+
+    BREAK_TYPES.forEach((type) => {
+      const allowedMs = (BREAK_TARGET_MINUTES[type] || 0) * 60000;
+      const usedMs = breakUsageByType[type] || 0;
+      const progress = allowedMs > 0 ? Math.max(0, Math.min(1, usedMs / allowedMs)) : 0;
+      const isExceeded = usedMs > allowedMs;
+      const fillColor = isExceeded ? "#ef4444" : (BREAK_TYPE_COLORS[type] || "#64748b");
+      const segmentStart = cursor;
+      const segmentEnd = cursor + segmentSize;
+      const fillEnd = segmentStart + (segmentSize * progress);
+
+      if (fillEnd > segmentStart) {
+        stops.push(`${fillColor} ${segmentStart}% ${fillEnd}%`);
+      }
+      if (fillEnd < segmentEnd) {
+        stops.push(`${emptyColor} ${fillEnd}% ${segmentEnd}%`);
+      }
+      cursor = segmentEnd;
+    });
+
+    return `conic-gradient(${stops.join(", ")})`;
+  }, [breakUsageByType, theme]);
 
   useEffect(() => {
     if (!isAuthenticated || role !== "employee") return;
@@ -2275,10 +2312,36 @@ export default function PortalPage() {
                         {isLoading("end-shift") ? "Ending..." : "End Shift"}
                       </button>
                     </div>
-                    <div className={`rounded-lg border px-3 py-2 text-right ${theme === "dark" ? "border-violet-900/70 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
-                      <p className={`text-[11px] font-semibold uppercase tracking-wide ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Break Remaining</p>
-                      <p className={`text-sm font-semibold ${totalBreakExceededMs ? (theme === "dark" ? "text-white" : "text-red-700") : (theme === "dark" ? "text-white" : "text-slate-900")}`}>
-                        {totalBreakExceededMs ? `Exceeded by ${formatDuration(totalBreakExceededMs)}` : formatDuration(totalBreakRemainingMs)}
+                    <div className={`rounded-xl border px-3 py-2 ${theme === "dark" ? "border-violet-900/70 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="relative h-24 w-24 rounded-full"
+                          style={{ background: breakDonutSegments }}
+                        >
+                          <div className={`absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border ${theme === "dark" ? "border-slate-700 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-900"}`}>
+                            <span className="text-[9px] font-semibold uppercase tracking-wide">Remaining</span>
+                            <span className={`text-[11px] font-bold ${totalBreakExceededMs ? "text-red-500" : ""}`}>
+                              {totalBreakExceededMs ? `-${formatDuration(totalBreakExceededMs)}` : formatDuration(totalBreakRemainingMs)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          {BREAK_TYPES.map((type) => {
+                            const usedMs = breakUsageByType[type] || 0;
+                            const allowedMs = (BREAK_TARGET_MINUTES[type] || 0) * 60000;
+                            const exceeded = usedMs > allowedMs;
+                            const dotColor = exceeded ? "#ef4444" : (BREAK_TYPE_COLORS[type] || "#64748b");
+                            return (
+                              <div key={`break-donut-${type}`} className={`flex items-center gap-1 text-[11px] ${theme === "dark" ? "text-slate-200" : "text-slate-700"}`}>
+                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
+                                <span>{type}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <p className={`mt-1 text-[10px] ${totalBreakExceededMs ? "text-red-500" : (theme === "dark" ? "text-slate-300" : "text-slate-500")}`}>
+                        {totalBreakExceededMs ? "Limit exceeded" : "Daily break balance"}
                       </p>
                     </div>
                   </div>
@@ -2343,8 +2406,8 @@ export default function PortalPage() {
                           {activeBreakType ? `Active: ${activeBreakType}` : "No active break"}
                         </span>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      {["Tea", "Lunch", "Evening", "Breather"].map((type) => (
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {BREAK_TYPES.map((type) => (
                         <button
                           key={type}
                           onClick={() => handleBreak(type, activeBreakType === type ? "end" : "start")}
