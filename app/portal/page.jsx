@@ -1797,6 +1797,63 @@ export default function PortalPage() {
   const breakProgress = activeBreakType ? Math.min(100, (breakElapsedMs / (breakTargetMinutes * 60000)) * 100) : 0;
   const isBreakOverrun = activeBreakType && breakElapsedMs > breakTargetMinutes * 60000;
   const breakRemainingMs = Math.max(0, breakTargetMinutes * 60000 - breakElapsedMs);
+  const totalBreakAllowanceMs = useMemo(
+    () => Object.values(BREAK_TARGET_MINUTES).reduce((sum, minutes) => sum + (Number(minutes) || 0), 0) * 60000,
+    []
+  );
+  const totalBreakUsedMs = useMemo(() => {
+    if (!user?.id) return 0;
+    const today = getToday();
+    const todayRows = breakRows
+      .filter((row) => {
+        const rowEmployeeId = row.employeeId || row.empId;
+        if (rowEmployeeId !== user.id) return false;
+        const ts = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
+        if (Number.isNaN(ts.getTime())) return false;
+        const rowDateFromField = String(row.date || "").slice(0, 10);
+        const rowDateFromTs = toLocalDateKey(ts);
+        return rowDateFromField === today || rowDateFromTs === today;
+      })
+      .sort((a, b) => {
+        const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
+        const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
+        return aTime - bTime;
+      });
+
+    const activeByType = new Map();
+    let usedMs = 0;
+
+    todayRows.forEach((row) => {
+      const ts = row.timestamp instanceof Date ? row.timestamp.getTime() : new Date(row.timestamp || 0).getTime();
+      if (!Number.isFinite(ts)) return;
+      const type = row.breakType || "General";
+      const rawAction = String(row.action || "").toLowerCase();
+      const action = rawAction || (String(row.status || "").toLowerCase() === "active" ? "start" : "end");
+
+      if (action === "start") {
+        activeByType.set(type, ts);
+      } else if (action === "end") {
+        const startedAt = activeByType.get(type);
+        if (Number.isFinite(startedAt) && ts > startedAt) {
+          usedMs += ts - startedAt;
+        }
+        activeByType.delete(type);
+      }
+    });
+
+    activeByType.forEach((startedAt) => {
+      usedMs += Math.max(0, clockTick - startedAt);
+    });
+
+    const hasActiveRowMatch = activeByType.has(activeBreakType);
+    if (activeBreakType && breakStartAt && !hasActiveRowMatch) {
+      usedMs += Math.max(0, clockTick - breakStartAt);
+    }
+
+    return Math.max(0, usedMs);
+  }, [activeBreakType, breakRows, breakStartAt, clockTick, user?.id]);
+  const totalBreakRemainingMs = Math.max(0, totalBreakAllowanceMs - totalBreakUsedMs);
+  const totalBreakExceededMs = Math.max(0, totalBreakUsedMs - totalBreakAllowanceMs);
 
   useEffect(() => {
     if (!isAuthenticated || role !== "employee") return;
@@ -2199,23 +2256,31 @@ export default function PortalPage() {
             <SectionCard title="Attendance Module">
               {role === "employee" ? (
                 <div className="mb-4 space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={handleStartShift}
-                      disabled={busy || shiftRunning}
-                      className={btnSuccess}
-                    >
-                      {isLoading("start-shift") ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                      {isLoading("start-shift") ? "Starting..." : "Start Shift"}
-                    </button>
-                    <button
-                      onClick={handleEndShift}
-                      disabled={busy || !shiftRunning}
-                      className={btnDanger}
-                    >
-                      {isLoading("end-shift") ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
-                      {isLoading("end-shift") ? "Ending..." : "End Shift"}
-                    </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={handleStartShift}
+                        disabled={busy || shiftRunning}
+                        className={btnSuccess}
+                      >
+                        {isLoading("start-shift") ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                        {isLoading("start-shift") ? "Starting..." : "Start Shift"}
+                      </button>
+                      <button
+                        onClick={handleEndShift}
+                        disabled={busy || !shiftRunning}
+                        className={btnDanger}
+                      >
+                        {isLoading("end-shift") ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
+                        {isLoading("end-shift") ? "Ending..." : "End Shift"}
+                      </button>
+                    </div>
+                    <div className={`rounded-lg border px-3 py-2 text-right ${theme === "dark" ? "border-violet-900/70 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
+                      <p className={`text-[11px] font-semibold uppercase tracking-wide ${theme === "dark" ? "text-white" : "text-slate-500"}`}>Break Remaining</p>
+                      <p className={`text-sm font-semibold ${totalBreakExceededMs ? (theme === "dark" ? "text-white" : "text-red-700") : (theme === "dark" ? "text-white" : "text-slate-900")}`}>
+                        {totalBreakExceededMs ? `Exceeded by ${formatDuration(totalBreakExceededMs)}` : formatDuration(totalBreakRemainingMs)}
+                      </p>
+                    </div>
                   </div>
 
                   <div className={`rounded-lg border p-3 ${theme === "dark" ? "border-violet-900/60 bg-slate-900/70" : "border-slate-200 bg-white"}`}>
