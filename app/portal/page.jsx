@@ -1873,18 +1873,31 @@ export default function PortalPage() {
     BREAK_TYPES.forEach((type) => {
       const allowedMs = (BREAK_TARGET_MINUTES[type] || 0) * 60000;
       const usedMs = breakUsageByType[type] || 0;
-      const progress = allowedMs > 0 ? Math.max(0, Math.min(1, usedMs / allowedMs)) : 0;
-      const isExceeded = usedMs > allowedMs;
-      const fillColor = isExceeded ? "#ef4444" : (BREAK_TYPE_COLORS[type] || "#64748b");
+      const fillColor = BREAK_TYPE_COLORS[type] || "#64748b";
       const segmentStart = cursor;
       const segmentEnd = cursor + segmentSize;
-      const fillEnd = segmentStart + (segmentSize * progress);
 
-      if (fillEnd > segmentStart) {
-        stops.push(`${fillColor} ${segmentStart}% ${fillEnd}%`);
-      }
-      if (fillEnd < segmentEnd) {
-        stops.push(`${emptyColor} ${fillEnd}% ${segmentEnd}%`);
+      if (allowedMs > 0 && usedMs > allowedMs) {
+        const overrunRatio = Math.min(1, (usedMs - allowedMs) / allowedMs);
+        const overrunSize = segmentSize * overrunRatio;
+        const normalEnd = Math.max(segmentStart, segmentEnd - overrunSize);
+
+        if (normalEnd > segmentStart) {
+          stops.push(`${fillColor} ${segmentStart}% ${normalEnd}%`);
+        }
+        if (segmentEnd > normalEnd) {
+          stops.push(`#ef4444 ${normalEnd}% ${segmentEnd}%`);
+        }
+      } else {
+        const progress = allowedMs > 0 ? Math.max(0, Math.min(1, usedMs / allowedMs)) : 0;
+        const fillEnd = segmentStart + (segmentSize * progress);
+
+        if (fillEnd > segmentStart) {
+          stops.push(`${fillColor} ${segmentStart}% ${fillEnd}%`);
+        }
+        if (fillEnd < segmentEnd) {
+          stops.push(`${emptyColor} ${fillEnd}% ${segmentEnd}%`);
+        }
       }
       cursor = segmentEnd;
     });
@@ -2327,10 +2340,7 @@ export default function PortalPage() {
                         </div>
                         <div className="space-y-1">
                           {BREAK_TYPES.map((type) => {
-                            const usedMs = breakUsageByType[type] || 0;
-                            const allowedMs = (BREAK_TARGET_MINUTES[type] || 0) * 60000;
-                            const exceeded = usedMs > allowedMs;
-                            const dotColor = exceeded ? "#ef4444" : (BREAK_TYPE_COLORS[type] || "#64748b");
+                            const dotColor = BREAK_TYPE_COLORS[type] || "#64748b";
                             return (
                               <div key={`break-donut-${type}`} className={`flex items-center gap-1 text-[11px] ${theme === "dark" ? "text-slate-200" : "text-slate-700"}`}>
                                 <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
@@ -3611,8 +3621,11 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
             <span className={`rounded px-2 py-0.5 text-xs font-medium ${isOverdue ? "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-white" : "bg-slate-100 text-slate-700 dark:bg-slate-700/40 dark:text-white"}`}>
               Due: {task.dueDate ? formatDate(task.dueDate) : "Not set"}
             </span>
-            {task.startedAt ? <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-700/40 dark:text-white">Started: {formatDate(task.startedAt)}</span> : null}
-            {task.completedAt ? <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/20 dark:text-white">Completed: {formatDate(task.completedAt)}</span> : null}
+            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-500/20 dark:text-blue-100">
+              Assigned: {formatDateTime(task.assignedAt || task.createdAtDate || task.createdAt)}
+            </span>
+            {task.startedAt ? <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-700/40 dark:text-white">Started: {formatDateTime(task.startedAt)}</span> : null}
+            {task.completedAt ? <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/20 dark:text-white">Completed: {formatDateTime(task.completedAt)}</span> : null}
           </div>
         </div>
         <span className={`rounded px-2 py-1 text-xs ${statusClass[task.status] || "bg-slate-100"}`}>{task.status}</span>
