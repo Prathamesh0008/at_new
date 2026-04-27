@@ -90,6 +90,75 @@ const formatMonthLabel = (monthValue) => {
   if (Number.isNaN(date.getTime())) return monthValue;
   return date.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 };
+const parseAnyDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value?.toDate === "function") {
+    const converted = value.toDate();
+    return converted instanceof Date && !Number.isNaN(converted.getTime()) ? converted : null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+const clampStartOfDay = (value) => {
+  const date = parseAnyDate(value);
+  if (!date) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+};
+const clampEndOfDay = (value) => {
+  const date = parseAnyDate(value);
+  if (!date) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+};
+const isDateWithinRange = (value, start, end) => {
+  const date = parseAnyDate(value);
+  if (!date || !start || !end) return false;
+  return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
+};
+const diffDaysInclusive = (start, end) => {
+  if (!start || !end) return 30;
+  const msInDay = 24 * 60 * 60 * 1000;
+  return Math.max(1, Math.floor((clampEndOfDay(end).getTime() - clampStartOfDay(start).getTime()) / msInDay) + 1);
+};
+const buildProgressWindow = (monthValue, range) => {
+  const [yearText, monthText] = String(monthValue || "").split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const anchorBase = year && month ? new Date(year, month - 1, 1) : new Date();
+  const anchorEnd = new Date(anchorBase.getFullYear(), anchorBase.getMonth() + 1, 0);
+  const normalizedRange = String(range || "month");
+  let start = new Date(anchorBase.getFullYear(), anchorBase.getMonth(), 1);
+  let end = new Date(anchorBase.getFullYear(), anchorBase.getMonth() + 1, 0);
+
+  if (normalizedRange === "week") {
+    end = anchorEnd;
+    start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+  } else if (normalizedRange === "quarter") {
+    const quarterStartMonth = Math.floor(anchorBase.getMonth() / 3) * 3;
+    start = new Date(anchorBase.getFullYear(), quarterStartMonth, 1);
+    end = new Date(anchorBase.getFullYear(), quarterStartMonth + 3, 0);
+  } else if (normalizedRange === "half_year") {
+    start = new Date(anchorBase.getFullYear(), anchorBase.getMonth() - 5, 1);
+    end = anchorEnd;
+  } else if (normalizedRange === "year") {
+    start = new Date(anchorBase.getFullYear(), 0, 1);
+    end = new Date(anchorBase.getFullYear(), 11, 31);
+  }
+
+  return {
+    start: clampStartOfDay(start),
+    end: clampEndOfDay(end),
+    key: normalizedRange,
+    label: `${start.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} - ${end.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+  };
+};
+const PROGRESS_RANGE_OPTIONS = [
+  { value: "week", label: "Weekly" },
+  { value: "month", label: "Monthly" },
+  { value: "quarter", label: "Quarterly" },
+  { value: "half_year", label: "6 Months" },
+  { value: "year", label: "Yearly" },
+];
 const toAmount = (value) => {
   const amount = Number(value || 0);
   return Number.isFinite(amount) ? Math.max(0, amount) : 0;
@@ -316,6 +385,7 @@ export default function PortalPage() {
   const [pendingCounts, setPendingCounts] = useState({ leaves: 0, worksheets: 0 });
 
   const [monthFilter, setMonthFilter] = useState(toMonthInputValue());
+  const [progressRange, setProgressRange] = useState("month");
   const [worksheetExportMode, setWorksheetExportMode] = useState("day");
   const [worksheetExportDay, setWorksheetExportDay] = useState(getToday());
   const [worksheetExportMonth, setWorksheetExportMonth] = useState(toMonthInputValue());
@@ -1045,30 +1115,49 @@ export default function PortalPage() {
       return row.dateKey.startsWith(`${activityExportMonth}-`);
     });
   }, [activityEmployeeFilter, activityExportDay, activityExportMode, activityExportMonth, detailedActivityRows]);
+  const progressWindow = useMemo(() => buildProgressWindow(monthFilter, progressRange), [monthFilter, progressRange]);
   const progressReportRows = useMemo(() => {
-    const [yearText, monthText] = String(monthFilter || "").split("-");
-    const year = Number(yearText);
-    const month = Number(monthText);
-    const daysInMonth = year && month ? new Date(year, month, 0).getDate() : 30;
-    const monthPrefix = year && month ? `${yearText}-${monthText}` : "";
+    const rangeStart = progressWindow?.start;
+    const rangeEnd = progressWindow?.end;
+    const expectedDays = diffDaysInclusive(rangeStart, rangeEnd);
 
     return employeeList
       .map((emp) => {
-        const attendance = monthlySummary.find((row) => row.employeeId === emp.id);
-        const payableDays = Number(attendance?.payableDays ?? attendance?.presentDays ?? 0);
-        const presentDays = Number(attendance?.presentDays || 0);
-        const attendanceScore = daysInMonth ? Math.min(100, (payableDays / daysInMonth) * 100) : 0;
+        const attendanceDates = new Set();
+        attendanceRaw.forEach((row) => {
+          const employeeId = row.empId || row.employeeId;
+          if (employeeId !== emp.id) return;
+          const dateCandidate = parseAnyDate(row.timestamp || row.date);
+          if (!isDateWithinRange(dateCandidate, rangeStart, rangeEnd)) return;
+          const dateKey = toLocalDateKey(dateCandidate || row.date);
+          if (!dateKey) return;
+          attendanceDates.add(dateKey);
+        });
+        const presentDays = attendanceDates.size;
+        const payableDays = presentDays;
+        const attendanceScore = expectedDays ? Math.min(100, (payableDays / expectedDays) * 100) : 0;
 
         const assignedTasks = taskRows.filter((row) => row.assignedTo === emp.id);
-        const totalTasks = assignedTasks.length;
-        const completedTasks = assignedTasks.filter((row) => row.status === "completed").length;
+        const assignedTasksInRange = assignedTasks.filter((row) =>
+          isDateWithinRange(
+            parseAnyDate(row.assignedAt || row.createdAtDate || row.createdAt || row.updatedAt || row.dueDate),
+            rangeStart,
+            rangeEnd
+          )
+        );
+        const completedTasksInRange = assignedTasks.filter((row) => {
+          if (row.status !== "completed") return false;
+          const completedAt = parseAnyDate(row.completedAt || row.updatedAt || row.updatedAtDate || row.createdAtDate || row.createdAt);
+          return isDateWithinRange(completedAt, rangeStart, rangeEnd);
+        });
+        const totalTasks = assignedTasksInRange.length;
+        const completedTasks = completedTasksInRange.length;
         const taskScore = totalTasks ? (completedTasks / totalTasks) * 100 : 0;
 
         const worksheetSubmitted = worksheetRows.filter((row) => {
           if (row.employeeId !== emp.id) return false;
-          const dateKey = String(row.date || "").slice(0, 10);
-          if (!dateKey || !monthPrefix) return false;
-          return dateKey.startsWith(`${monthPrefix}-`);
+          const worksheetDate = parseAnyDate(row.date || row.createdAtDate || row.createdAt || row.updatedAt);
+          return isDateWithinRange(worksheetDate, rangeStart, rangeEnd);
         }).length;
         const worksheetExpected = Math.max(1, presentDays);
         const worksheetScore = Math.min(100, (worksheetSubmitted / worksheetExpected) * 100);
@@ -1090,7 +1179,7 @@ export default function PortalPage() {
         };
       })
       .sort((a, b) => b.progressScore - a.progressScore);
-  }, [employeeList, monthlySummary, monthFilter, taskRows, worksheetRows]);
+  }, [attendanceRaw, employeeList, progressWindow, taskRows, worksheetRows]);
   const averageProgressScore = useMemo(() => {
     if (!progressReportRows.length) return 0;
     const total = progressReportRows.reduce((sum, row) => sum + row.progressScore, 0);
@@ -2594,6 +2683,15 @@ export default function PortalPage() {
                     title="Employee Progress Graph and Report"
                     right={
                       <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={progressRange}
+                          onChange={(e) => setProgressRange(e.target.value)}
+                          className={`rounded-lg px-3 py-1.5 text-sm ${theme === "dark" ? "border border-slate-600 bg-slate-900 text-slate-100" : "border border-slate-300 bg-white text-slate-800"}`}
+                        >
+                          {PROGRESS_RANGE_OPTIONS.map((option) => (
+                            <option key={`progress-range-${option.value}`} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
                         <input
                           type="month"
                           value={monthFilter}
@@ -2626,7 +2724,7 @@ export default function PortalPage() {
                     <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-950/60" : "border-slate-200 bg-slate-100"}`}>
                       <div className="mb-2 flex items-center justify-between">
                         <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Team Performance Analytics</p>
-                        <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>{formatMonthLabel(monthFilter)}</p>
+                        <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>{progressWindow?.label || formatMonthLabel(monthFilter)}</p>
                       </div>
                       <div className="overflow-x-auto pb-2">
                         <div className="w-full min-w-[720px] rounded-xl border border-cyan-500/20 bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.20),_rgba(2,6,23,0.92)_45%,_rgba(2,6,23,0.96)_100%)] p-4 shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_24px_60px_rgba(2,6,23,0.60)]">
