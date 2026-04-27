@@ -1097,6 +1097,33 @@ export default function PortalPage() {
     return Math.round(total / progressReportRows.length);
   }, [progressReportRows]);
   const topPerformer = progressReportRows[0] || null;
+  const teamChartRows = useMemo(() => progressReportRows.slice(0, 10), [progressReportRows]);
+  const teamChartMeta = useMemo(() => {
+    if (!teamChartRows.length) return null;
+    const viewBoxWidth = 1000;
+    const viewBoxHeight = 240;
+    const leftPad = 36;
+    const rightPad = 36;
+    const topPad = 18;
+    const bottomPad = 22;
+    const plotWidth = viewBoxWidth - leftPad - rightPad;
+    const plotHeight = viewBoxHeight - topPad - bottomPad;
+    const consistencyValues = teamChartRows.map((row) =>
+      Math.max(0, Math.min(100, Math.round((row.attendanceScore * 0.6) + (row.worksheetScore * 0.4))))
+    );
+    const linePoints = consistencyValues.map((value, index) => {
+      const x =
+        teamChartRows.length === 1
+          ? leftPad + (plotWidth / 2)
+          : leftPad + ((plotWidth * index) / (teamChartRows.length - 1));
+      const y = topPad + ((100 - value) / 100) * plotHeight;
+      return { x, y, value };
+    });
+    const linePath = linePoints
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(" ");
+    return { linePath, linePoints };
+  }, [teamChartRows]);
   const liveBreakRows = useMemo(() => {
     const today = getToday();
     const todayBreaks = breakRows
@@ -2596,26 +2623,70 @@ export default function PortalPage() {
                       </div>
                     </div>
 
-                    <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-900/60" : "border-slate-200 bg-slate-50"}`}>
+                    <div className={`rounded-xl border p-3 ${theme === "dark" ? "border-slate-700 bg-slate-950/60" : "border-slate-200 bg-slate-100"}`}>
                       <div className="mb-2 flex items-center justify-between">
-                        <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Team Progress Bar Graph</p>
-                        <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>Overall Progress %</p>
+                        <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Team Performance Analytics</p>
+                        <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>{formatMonthLabel(monthFilter)}</p>
                       </div>
                       <div className="overflow-x-auto pb-2">
-                        <div className="flex min-w-[720px] items-end gap-3 rounded-lg border border-slate-200 bg-white px-3 py-4 dark:border-slate-700 dark:bg-slate-950/40">
-                          {progressReportRows.map((row) => (
-                            <div key={`progress-bar-${row.employeeId}`} className="flex min-w-[92px] flex-1 flex-col items-center justify-end">
-                              <p className={`mb-1 text-[11px] font-semibold ${theme === "dark" ? "text-slate-300" : "text-slate-700"}`}>{row.progressScore}%</p>
-                              <div className="flex h-52 w-full items-end rounded-md border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-900/70">
-                                <div
-                                  className="w-full rounded-sm bg-gradient-to-t from-blue-500 via-cyan-500 to-emerald-400 transition-all duration-500"
-                                  style={{ height: `${Math.max(8, row.progressScore)}%` }}
-                                  title={`${row.employeeName}: ${row.progressScore}%`}
-                                />
-                              </div>
-                              <p className={`mt-2 text-center text-[11px] font-medium ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{formatEmployeeDisplayName(row.employeeName)}</p>
+                        <div className="w-full min-w-[720px] rounded-xl border border-cyan-500/20 bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.20),_rgba(2,6,23,0.92)_45%,_rgba(2,6,23,0.96)_100%)] p-4 shadow-[0_0_0_1px_rgba(34,211,238,0.06),0_24px_60px_rgba(2,6,23,0.60)]">
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">Users: Monthly Team Snapshot</p>
+                            <div className="flex items-center gap-4 text-[11px]">
+                              <span className="inline-flex items-center gap-1 text-blue-300">
+                                <span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />
+                                Overall Progress
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-pink-300">
+                                <span className="h-0.5 w-4 rounded-full bg-pink-300" />
+                                Consistency Index
+                              </span>
                             </div>
-                          ))}
+                          </div>
+
+                          <div className="relative h-[320px] overflow-hidden rounded-lg border border-cyan-400/10 bg-slate-950/40 px-4 pb-12 pt-6">
+                            {[0, 20, 40, 60, 80, 100].map((scale) => (
+                              <div
+                                key={`chart-grid-${scale}`}
+                                className="pointer-events-none absolute left-12 right-4 border-t border-cyan-300/10"
+                                style={{ top: `${24 + ((100 - scale) / 100) * 235}px` }}
+                              >
+                                <span className="absolute -left-8 -translate-y-1/2 text-[10px] font-medium text-cyan-200/85">{scale}%</span>
+                              </div>
+                            ))}
+
+                            <div className="absolute bottom-12 left-12 right-4 top-6 flex items-end gap-2">
+                              {teamChartRows.map((row) => (
+                                <div key={`progress-dashboard-bar-${row.employeeId}`} className="flex h-full min-w-[68px] flex-1 flex-col items-center justify-end">
+                                  <div
+                                    className="relative w-[84%] overflow-hidden rounded-[4px] border border-blue-200/20 bg-gradient-to-t from-blue-700 via-blue-500 to-blue-300 shadow-[0_0_14px_rgba(59,130,246,0.45)] transition-all duration-500"
+                                    style={{ height: `${Math.max(12, row.progressScore)}%` }}
+                                    title={`${row.employeeName}: ${row.progressScore}%`}
+                                  >
+                                    <div className="pointer-events-none absolute inset-x-0 top-0 h-[34%] bg-gradient-to-b from-white/40 to-white/0" />
+                                  </div>
+                                  <span className="mt-1 text-[11px] font-semibold text-blue-100">{row.progressScore}%</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {teamChartMeta?.linePath ? (
+                              <svg className="pointer-events-none absolute left-12 right-4 top-6 h-[238px] w-[calc(100%-4rem)]" viewBox="0 0 1000 240" preserveAspectRatio="none" aria-hidden="true">
+                                <path d={teamChartMeta.linePath} fill="none" stroke="rgba(244, 114, 182, 0.95)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+                                {teamChartMeta.linePoints.map((point, index) => (
+                                  <circle key={`progress-dashboard-point-${index}`} cx={point.x} cy={point.y} r="4.4" fill="rgba(253, 164, 175, 1)" stroke="rgba(15, 23, 42, 0.9)" strokeWidth="1.5" />
+                                ))}
+                              </svg>
+                            ) : null}
+
+                            <div className="absolute bottom-2 left-12 right-4 flex items-start gap-2">
+                              {teamChartRows.map((row) => (
+                                <div key={`progress-dashboard-label-${row.employeeId}`} className="min-w-[68px] flex-1 text-center text-[10px] font-medium uppercase tracking-wide text-slate-200/80">
+                                  {formatEmployeeDisplayName(row.employeeName).split(" ")[0]}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
