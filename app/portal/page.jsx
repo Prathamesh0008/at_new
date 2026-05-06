@@ -181,6 +181,7 @@ const AUTO_SYNC_MS = 15000;
 const NOTIFICATION_SYNC_MS = 4000;
 const LIVE_BREAK_POLL_MS = 4000;
 const TASK_IMAGE_MAX_BYTES = 500 * 1024;
+const TASK_MAX_ATTACHMENTS = 5;
 const readFileAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -390,9 +391,7 @@ export default function PortalPage() {
   const [worksheetExportMode, setWorksheetExportMode] = useState("day");
   const [worksheetExportDay, setWorksheetExportDay] = useState(getToday());
   const [worksheetExportMonth, setWorksheetExportMonth] = useState(toMonthInputValue());
-  const [activityExportMode, setActivityExportMode] = useState("day");
-  const [activityExportDay, setActivityExportDay] = useState(getToday());
-  const [activityExportMonth, setActivityExportMonth] = useState(toMonthInputValue());
+  const [activityAnchorDate, setActivityAnchorDate] = useState(getToday());
   const [activityEmployeeFilter, setActivityEmployeeFilter] = useState("all");
   const [monthlySummary, setMonthlySummary] = useState([]);
   const [attendanceRaw, setAttendanceRaw] = useState([]);
@@ -428,8 +427,7 @@ export default function PortalPage() {
     assignedTo: "",
     priority: "medium",
     dueDate: "",
-    imageDataUrl: "",
-    imageName: "",
+    images: [],
   });
   const [taskSearch, setTaskSearch] = useState("");
   const [taskStatusFilter, setTaskStatusFilter] = useState("all");
@@ -1110,12 +1108,19 @@ export default function PortalPage() {
   }, [attendanceRaw, breakRows]);
 
   const filteredDetailedActivityRows = useMemo(() => {
+    const selectedDate = parseInputDate(activityAnchorDate) || new Date();
+    const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
+    const rangeStart = new Date(rangeEnd);
+    rangeStart.setDate(rangeEnd.getDate() - 6);
+    rangeStart.setHours(0, 0, 0, 0);
+
     return detailedActivityRows.filter((row) => {
       if (activityEmployeeFilter !== "all" && row.employeeId !== activityEmployeeFilter) return false;
-      if (activityExportMode === "day") return row.dateKey === activityExportDay;
-      return row.dateKey.startsWith(`${activityExportMonth}-`);
+      if (row.action !== "clock-in") return false;
+      if (!(row.timestamp instanceof Date) || Number.isNaN(row.timestamp.getTime())) return false;
+      return row.timestamp.getTime() >= rangeStart.getTime() && row.timestamp.getTime() <= rangeEnd.getTime();
     });
-  }, [activityEmployeeFilter, activityExportDay, activityExportMode, activityExportMonth, detailedActivityRows]);
+  }, [activityAnchorDate, activityEmployeeFilter, detailedActivityRows]);
   const progressWindow = useMemo(() => buildProgressWindow(monthFilter, progressRange), [monthFilter, progressRange]);
   const progressReportRows = useMemo(() => {
     const rangeStart = progressWindow?.start;
@@ -1421,7 +1426,7 @@ export default function PortalPage() {
     setLoadingAction("assign-task");
     try {
       await createTask({ ...taskForm, assignedToName: selectedEmployee?.name || taskForm.assignedTo, assignedBy: user.id, assignedByName: user.name });
-      setTaskForm({ title: "", details: "", assignedTo: "", priority: "medium", dueDate: "", imageDataUrl: "", imageName: "" });
+      setTaskForm({ title: "", details: "", assignedTo: "", priority: "medium", dueDate: "", images: [] });
       setFlash("Task assigned.");
       refresh();
     } catch (error) {
@@ -1434,28 +1439,49 @@ export default function PortalPage() {
   };
 
   const handleTaskImageChange = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
 
-    if (!String(file.type || "").startsWith("image/")) {
+    const currentCount = taskForm.images.length;
+    if (currentCount >= TASK_MAX_ATTACHMENTS) {
       event.target.value = "";
-      setFlash("Please upload an image file only.");
+      setFlash(`Maximum ${TASK_MAX_ATTACHMENTS} pictures allowed per task.`);
       return;
     }
 
-    if (file.size > TASK_IMAGE_MAX_BYTES) {
-      event.target.value = "";
-      setFlash("Task image must be 500 KB or smaller.");
-      return;
-    }
+    const availableSlots = TASK_MAX_ATTACHMENTS - currentCount;
+    const filesToProcess = files.slice(0, availableSlots);
+    const nextImages = [];
 
     try {
-      const imageDataUrl = await readFileAsDataUrl(file);
-      setTaskForm((prev) => ({ ...prev, imageDataUrl, imageName: file.name || "task-image" }));
+      for (const file of filesToProcess) {
+        if (!String(file.type || "").startsWith("image/")) {
+          setFlash("Only image files are allowed.");
+          continue;
+        }
+        if (file.size > TASK_IMAGE_MAX_BYTES) {
+          setFlash(`"${file.name}" is larger than 500 KB and was skipped.`);
+          continue;
+        }
+
+        const imageDataUrl = await readFileAsDataUrl(file);
+        nextImages.push({
+          imageDataUrl,
+          imageName: file.name || "task-image",
+        });
+      }
+
+      if (nextImages.length) {
+        setTaskForm((prev) => ({
+          ...prev,
+          images: [...prev.images, ...nextImages].slice(0, TASK_MAX_ATTACHMENTS),
+        }));
+      }
     } catch (error) {
       console.error(error);
+      setFlash("Could not process one or more images.");
+    } finally {
       event.target.value = "";
-      setFlash("Could not process the image.");
     }
   };
 
@@ -1657,26 +1683,52 @@ export default function PortalPage() {
   };
 
   const exportDetailedActivityExcel = () => {
-    if (!filteredDetailedActivityRows.length) {
-      return setFlash("No activity records found for selected filters.");
+    const selectedDate = parseInputDate(activityAnchorDate) || new Date();
+    const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
+    const rangeStart = new Date(rangeEnd);
+    rangeStart.setDate(rangeEnd.getDate() - 6);
+    rangeStart.setHours(0, 0, 0, 0);
+
+    const shiftStartRows = attendanceRaw
+      .map((row) => {
+        const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || row.date || Date.now());
+        return {
+          employeeId: row.empId || row.employeeId || "-",
+          employeeName: row.empName || row.employeeName || "-",
+          action: normalizeAttendanceAction(row.action) || "-",
+          dateKey: getRowDateKey(row),
+          displayTime: row.time || new Date(timestamp).toLocaleTimeString("en-IN"),
+          timestamp,
+        };
+      })
+      .filter((row) => {
+        if (activityEmployeeFilter !== "all" && row.employeeId !== activityEmployeeFilter) return false;
+        if (row.action !== "clock-in") return false;
+        if (!(row.timestamp instanceof Date) || Number.isNaN(row.timestamp.getTime())) return false;
+        return row.timestamp.getTime() >= rangeStart.getTime() && row.timestamp.getTime() <= rangeEnd.getTime();
+      })
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    if (!shiftStartRows.length) {
+      return setFlash("Selected date paryantche 7 days madhye Shift Start records sapadle nahit.");
     }
 
-    const exportRows = filteredDetailedActivityRows.map((row, index) => ({
+    const exportRows = shiftStartRows.map((row, index) => ({
       SrNo: index + 1,
       EmployeeID: row.employeeId,
       EmployeeName: row.employeeName,
-      EventType: row.eventType,
-      Action: row.action,
-      BreakType: row.breakType || "-",
+      EventType: "attendance",
+      Action: "Shift Start",
+      BreakType: "-",
       Date: row.dateKey,
       Time: row.displayTime,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportRows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Detailed Activity");
-    const suffix = activityExportMode === "day" ? activityExportDay : activityExportMonth;
-    XLSX.writeFile(workbook, `attendance-break-report-${suffix}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Shift Start 7 Days");
+    const endKey = toLocalDateKey(rangeEnd);
+    XLSX.writeFile(workbook, `shift-start-7-days-till-${endKey}.xlsx`);
   };
   const applyDemoSalarySplit = () => {
     const basic = Math.round(DEMO_MONTHLY_SALARY * 0.5);
@@ -2202,8 +2254,7 @@ export default function PortalPage() {
           </div>
         </div>
       ) : null}
-      <header className={`relative sticky top-0 z-30 border-b backdrop-blur-xl ${theme === "dark" ? "border-[#A346FF]/40 bg-[linear-gradient(120deg,rgba(0,7,33,0.96)_0%,rgba(12,18,48,0.92)_56%,rgba(163,70,255,0.18)_100%)] shadow-[0_14px_40px_-24px_rgba(163,70,255,0.85)]" : "border-slate-200/80 bg-[linear-gradient(120deg,rgba(255,255,255,0.95)_0%,rgba(241,245,249,0.92)_100%)] shadow-[0_10px_24px_-18px_rgba(15,23,42,0.35)]"}`}>
-        <div className={`pointer-events-none absolute inset-x-0 bottom-0 h-px ${theme === "dark" ? "bg-gradient-to-r from-transparent via-[#A346FF]/70 to-transparent" : "bg-gradient-to-r from-transparent via-slate-300 to-transparent"}`} />
+      <header className={`relative sticky top-0 z-30 backdrop-blur-md ${theme === "dark" ? "bg-[linear-gradient(120deg,rgba(0,7,33,0.55)_0%,rgba(12,18,48,0.48)_56%,rgba(163,70,255,0.10)_100%)]" : "bg-[linear-gradient(120deg,rgba(255,255,255,0.55)_0%,rgba(241,245,249,0.48)_100%)]"}`}>
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className={`mb-1 inline-flex items-center gap-2 rounded-full border px-3 py-1 ${theme === "dark" ? "border-[#A346FF]/55 bg-[#A346FF]/15" : "border-slate-300 bg-white/90"}`}>
@@ -3002,24 +3053,33 @@ export default function PortalPage() {
                   <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-3 dark:border-slate-600 dark:bg-slate-900/40 md:col-span-2">
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-200">Task Picture (Optional)</label>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Upload a reference image so employee can understand task faster. Max 500 KB.</p>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-200">Task Pictures (Optional)</label>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">Upload reference images so employee can understand task faster. Max 500 KB each, up to 5 images.</p>
                       </div>
                     </div>
-                    <input type="file" accept="image/*" onChange={handleTaskImageChange} className="block w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-slate-100 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:file:border-slate-600 dark:file:bg-slate-800 dark:file:text-white dark:hover:file:bg-slate-700" />
-                    {taskForm.imageDataUrl ? (
-                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900/60">
-                        <img src={taskForm.imageDataUrl} alt={taskForm.imageName || "Task attachment preview"} className="h-20 w-20 rounded-md border border-slate-200 object-cover dark:border-slate-600" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-100">{taskForm.imageName || "Image attached"}</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-300">Attachment ready</p>
-                          <button
-                            type="button"
-                            onClick={() => setTaskForm((prev) => ({ ...prev, imageDataUrl: "", imageName: "" }))}
-                            className="mt-2 inline-flex rounded-md border border-rose-400 px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-500/70 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                          >
-                            Remove picture
-                          </button>
+                    <input type="file" accept="image/*" multiple onChange={handleTaskImageChange} className="block w-full rounded-md border border-slate-200 bg-white px-2 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-slate-100 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:file:border-slate-600 dark:file:bg-slate-800 dark:file:text-white dark:hover:file:bg-slate-700" />
+                    {taskForm.images.length ? (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900/60">
+                        <p className="mb-2 text-xs text-slate-500 dark:text-slate-300">{taskForm.images.length} attachment(s) ready</p>
+                        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                          {taskForm.images.map((img, index) => (
+                            <div key={`${img.imageName}-${index}`} className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+                              <img src={img.imageDataUrl} alt={img.imageName || "Task attachment preview"} className="h-20 w-full rounded-md border border-slate-200 object-cover dark:border-slate-600" />
+                              <p className="mt-1 truncate text-[11px] font-medium text-slate-700 dark:text-slate-100">{img.imageName || `Image ${index + 1}`}</p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setTaskForm((prev) => ({
+                                    ...prev,
+                                    images: prev.images.filter((_, imgIndex) => imgIndex !== index),
+                                  }))
+                                }
+                                className="mt-2 inline-flex rounded-md border border-rose-400 px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-rose-500/70 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     ) : null}
@@ -3445,35 +3505,20 @@ export default function PortalPage() {
 
                 <div className={`rounded-2xl border p-4 ${theme === "dark" ? "border-blue-400/30 bg-gradient-to-br from-blue-900/30 to-slate-900/80" : "border-slate-200 bg-gradient-to-br from-blue-50 to-white"}`}>
                   <div className="mb-3 flex items-center justify-between">
-                    <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Detailed Attendance + Break Report</p>
+                    <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Shift Start Report (Last 7 Days)</p>
                     <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">Live Data</span>
                   </div>
-                  <div className={`mb-3 inline-flex rounded-xl p-1 ${theme === "dark" ? "border border-slate-700 bg-slate-900/80" : "border border-slate-200 bg-white"}`}>
-                    <button
-                      onClick={() => setActivityExportMode("day")}
-                      className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition ${activityExportMode === "day" ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
-                    >
-                      Day-wise
-                    </button>
-                    <button
-                      onClick={() => setActivityExportMode("month")}
-                      className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold transition ${activityExportMode === "month" ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
-                    >
-                      Month-wise
-                    </button>
-                  </div>
-
-                  <div className="mb-3 grid items-end gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {activityExportMode === "day" ? (
-                      <StyledDatePicker value={activityExportDay} onChange={setActivityExportDay} className="w-full md:col-span-1" triggerClassName="h-12 rounded-lg" theme={theme} />
-                    ) : (
-                      <input
-                        type="month"
-                        value={activityExportMonth}
-                        onChange={(e) => setActivityExportMonth(e.target.value)}
-                        className={`h-12 rounded-lg px-3 py-2 text-sm ${theme === "dark" ? "border border-slate-600 bg-slate-900 text-slate-100" : "border border-slate-300 bg-white"}`}
-                      />
-                    )}
+                  <p className={`mb-3 text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>
+                    Select any date and get Shift Start entries for that date and previous 6 days.
+                  </p>
+                  <div className="mb-3 grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <StyledDatePicker
+                      value={activityAnchorDate}
+                      onChange={setActivityAnchorDate}
+                      className="w-full"
+                      triggerClassName="h-12 rounded-lg"
+                      theme={theme}
+                    />
 
                     <select
                       value={activityEmployeeFilter}
@@ -3486,9 +3531,9 @@ export default function PortalPage() {
                       ))}
                     </select>
 
-                    <button onClick={exportDetailedActivityExcel} className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md">
+                    <button onClick={exportDetailedActivityExcel} className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md sm:col-span-2 xl:col-span-1">
                       <FileSpreadsheet className="h-4 w-4" />
-                      Export Report
+                      Export Shift Start
                     </button>
                   </div>
                 </div>
@@ -3772,6 +3817,7 @@ function Stat({ label, value }) {
 
 function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
   const starting = busy && loadingAction === `task-${task.id}-in_progress`;
   const completing = busy && loadingAction === `task-${task.id}-completed`;
   const cancelling = busy && loadingAction === `task-${task.id}-cancelled`;
@@ -3787,7 +3833,20 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
       : "bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-white";
   const dueDate = task.dueDate ? new Date(task.dueDate) : null;
   const isOverdue = dueDate && dueDate.getTime() < Date.now() && task.status !== "completed";
-  const taskImageUrl = String(task.imageDataUrl || task.imageUrl || "").trim();
+  const legacyImageUrl = String(task.imageDataUrl || task.imageUrl || "").trim();
+  const legacyImageName = String(task.imageName || "").trim();
+  const attachmentImages = Array.isArray(task.images)
+    ? task.images
+      .map((item) => ({
+        imageDataUrl: String(item?.imageDataUrl || item?.url || "").trim(),
+        imageName: String(item?.imageName || "").trim(),
+      }))
+      .filter((item) => item.imageDataUrl)
+    : [];
+  const taskAttachments = attachmentImages.length
+    ? attachmentImages
+    : (legacyImageUrl ? [{ imageDataUrl: legacyImageUrl, imageName: legacyImageName }] : []);
+  const selectedPreview = taskAttachments[previewIndex] || taskAttachments[0] || null;
 
   return (
     <div className="mb-2 rounded-md border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-900/50">
@@ -3795,20 +3854,34 @@ function TaskCard({ task, role, onUpdate, busy, loadingAction }) {
         <div>
           <p className="font-medium text-slate-900 dark:text-white">{task.title}</p>
           <p className="text-sm text-slate-600 dark:text-white">{task.details}</p>
-          {taskImageUrl ? (
+          {taskAttachments.length ? (
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-900/40">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">Attachment</p>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">Attachments ({taskAttachments.length})</p>
               <button
                 type="button"
                 onClick={() => setPreviewOpen((prev) => !prev)}
                 className="inline-flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-left hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800/80"
               >
-                <img src={taskImageUrl} alt={`Task attachment for ${task.title}`} className="h-14 w-14 rounded border border-slate-200 object-cover dark:border-slate-600" />
-                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{previewOpen ? "Hide task picture" : "Open task picture"}</span>
+                <img src={selectedPreview?.imageDataUrl} alt={`Task attachment for ${task.title}`} className="h-14 w-14 rounded border border-slate-200 object-cover dark:border-slate-600" />
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">{previewOpen ? "Hide task pictures" : "Open task pictures"}</span>
               </button>
               {previewOpen ? (
                 <div className="mt-2 rounded-md border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60">
-                  <img src={taskImageUrl} alt={`Task preview for ${task.title}`} className="max-h-80 w-full rounded object-contain" />
+                  <img src={selectedPreview?.imageDataUrl} alt={`Task preview for ${task.title}`} className="max-h-80 w-full rounded object-contain" />
+                  {taskAttachments.length > 1 ? (
+                    <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
+                      {taskAttachments.map((item, index) => (
+                        <button
+                          key={`${item.imageName || "attachment"}-${index}`}
+                          type="button"
+                          onClick={() => setPreviewIndex(index)}
+                          className={`overflow-hidden rounded border ${previewIndex === index ? "border-blue-500" : "border-slate-300 dark:border-slate-600"}`}
+                        >
+                          <img src={item.imageDataUrl} alt={item.imageName || `Attachment ${index + 1}`} className="h-12 w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -28,6 +28,13 @@ export async function POST(request) {
       breakType,
       action
     });
+
+    if (!result?.success) {
+      return Response.json(
+        { error: 'Failed to persist break update', success: false },
+        { status: 500 }
+      );
+    }
     
     return Response.json({
       message: `${breakType} break ${action}ed`,
