@@ -375,6 +375,7 @@ export default function PortalPage() {
   const activeLockedTaskIdRef = useRef("");
   const autoShiftCloseKeyRef = useRef("");
   const employeeDefaultTabAppliedRef = useRef(false);
+  const breakRequestInFlightRef = useRef(false);
 
   const [notifications, setNotifications] = useState([]);
   const [leaveRows, setLeaveRows] = useState([]);
@@ -1332,8 +1333,24 @@ export default function PortalPage() {
 
   const handleBreak = async (breakType, action) => {
     if (!shiftRunning) return setFlash("Start shift before break.");
+    if (breakRequestInFlightRef.current) return;
+    if (action === "start" && activeBreakType && activeBreakType !== breakType) {
+      return setFlash(`End ${activeBreakType} break before starting ${breakType}.`);
+    }
+    const resolvedBreakType = action === "end" && activeBreakType && activeBreakType !== breakType
+      ? activeBreakType
+      : breakType;
+
+    const previousBreakType = activeBreakType;
+    const previousBreakStartAt = breakStartAt;
+    const previousBreakExceededMarker = breakExceededMarker;
+
+    // Optimistically clear UI state on end so timer stops immediately.
+    if (action === "end") saveBreakState("");
+
+    breakRequestInFlightRef.current = true;
     setBusy(true);
-    setLoadingAction(`break-${breakType}-${action}`);
+    setLoadingAction(`break-${resolvedBreakType}-${action}`);
     try {
       const response = await fetch("/api/breaks", {
         method: "POST",
@@ -1341,19 +1358,33 @@ export default function PortalPage() {
         body: JSON.stringify({
           employeeId: user.id,
           employeeName: user.name,
-          breakType,
+          breakType: resolvedBreakType,
           action,
         }),
       });
       if (!response.ok) throw new Error("Break update failed");
-      if (action === "start") saveBreakState(breakType, Date.now());
-      if (action === "end") saveBreakState("");
-      setFlash(`${breakType} break ${action}ed.`);
+      if (action === "start") saveBreakState(resolvedBreakType, Date.now());
+      setFlash(`${resolvedBreakType} break ${action}ed.`);
       refresh();
     } catch (error) {
       console.error(error);
+      if (action === "end" && previousBreakType) {
+        setActiveBreakType(previousBreakType);
+        setBreakStartAt(previousBreakStartAt);
+        setBreakExceededMarker(previousBreakExceededMarker || "");
+        localStorage.setItem(`portal_break_${user.id}`, previousBreakType);
+        if (previousBreakStartAt) {
+          localStorage.setItem(`portal_break_started_at_${user.id}`, String(previousBreakStartAt));
+        }
+        if (previousBreakExceededMarker) {
+          localStorage.setItem(`portal_break_exceeded_${user.id}`, previousBreakExceededMarker);
+        } else {
+          localStorage.removeItem(`portal_break_exceeded_${user.id}`);
+        }
+      }
       setFlash("Could not update break.");
     } finally {
+      breakRequestInFlightRef.current = false;
       setBusy(false);
       setLoadingAction("");
     }
