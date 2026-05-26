@@ -418,7 +418,7 @@ export default function PortalPage() {
   });
 
   const [leaveForm, setLeaveForm] = useState({ fromDate: "", toDate: "", reason: "", leaveType: "General" });
-  const [managerHalfDayForm, setManagerHalfDayForm] = useState({ employeeId: "", date: getToday(), reason: "Personal leave" });
+  const [managerHalfDayForm, setManagerHalfDayForm] = useState({ employeeId: "", date: getToday(), reason: "Personal leave", leaveType: "full_day" });
   const [saturdayHolidayDate, setSaturdayHolidayDate] = useState(getToday());
   const [saturdayHolidayDates, setSaturdayHolidayDates] = useState([]);
   const [taskForm, setTaskForm] = useState({
@@ -1109,10 +1109,8 @@ export default function PortalPage() {
 
   const filteredDetailedActivityRows = useMemo(() => {
     const selectedDate = parseInputDate(activityAnchorDate) || new Date();
-    const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
-    const rangeStart = new Date(rangeEnd);
-    rangeStart.setDate(rangeEnd.getDate() - 6);
-    rangeStart.setHours(0, 0, 0, 0);
+    const rangeStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1, 0, 0, 0, 0);
+    const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
 
     return detailedActivityRows.filter((row) => {
       if (activityEmployeeFilter !== "all" && row.employeeId !== activityEmployeeFilter) return false;
@@ -1544,13 +1542,13 @@ export default function PortalPage() {
       await assignHalfDayLeaveByManager({
         employeeId: managerHalfDayForm.employeeId,
         date: managerHalfDayForm.date,
-        leaveType: "full_day",
+        leaveType: managerHalfDayForm.leaveType || "full_day",
         reason: managerHalfDayForm.reason,
         managerId: user.id,
         managerName: user.name,
       });
-      setManagerHalfDayForm({ employeeId: "", date: getToday(), reason: "Personal leave" });
-      setFlash("Full Day leave assigned.");
+      setManagerHalfDayForm({ employeeId: "", date: getToday(), reason: "Personal leave", leaveType: "full_day" });
+      setFlash(`${managerHalfDayForm.leaveType === "half_day" ? "Half Day" : "Full Day"} leave assigned.`);
       refresh();
     } catch (error) {
       console.error(error);
@@ -1684,10 +1682,8 @@ export default function PortalPage() {
 
   const exportDetailedActivityExcel = () => {
     const selectedDate = parseInputDate(activityAnchorDate) || new Date();
-    const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
-    const rangeStart = new Date(rangeEnd);
-    rangeStart.setDate(rangeEnd.getDate() - 6);
-    rangeStart.setHours(0, 0, 0, 0);
+    const rangeStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1, 0, 0, 0, 0);
+    const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const shiftStartRows = attendanceRaw
       .map((row) => {
@@ -1710,7 +1706,7 @@ export default function PortalPage() {
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     if (!shiftStartRows.length) {
-      return setFlash("Selected date paryantche 7 days madhye Shift Start records sapadle nahit.");
+      return setFlash("Selected month madhe Shift Start records sapadle nahit.");
     }
 
     const exportRows = shiftStartRows.map((row, index) => ({
@@ -1726,9 +1722,9 @@ export default function PortalPage() {
 
     const worksheet = XLSX.utils.json_to_sheet(exportRows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Shift Start 7 Days");
-    const endKey = toLocalDateKey(rangeEnd);
-    XLSX.writeFile(workbook, `shift-start-7-days-till-${endKey}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Shift Start Monthly");
+    const monthSuffix = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}`;
+    XLSX.writeFile(workbook, `shift-start-month-${monthSuffix}.xlsx`);
   };
   const applyDemoSalarySplit = () => {
     const basic = Math.round(DEMO_MONTHLY_SALARY * 0.5);
@@ -2941,7 +2937,7 @@ export default function PortalPage() {
                 </form>
               ) : null}
               {role === "manager" ? (
-                <form onSubmit={handleManagerSetHalfDayLeave} className="mb-4 grid gap-3 md:grid-cols-4">
+                <form onSubmit={handleManagerSetHalfDayLeave} className="mb-4 grid gap-3 md:grid-cols-5">
                   <select
                     value={managerHalfDayForm.employeeId}
                     onChange={(e) => setManagerHalfDayForm((prev) => ({ ...prev, employeeId: e.target.value }))}
@@ -2955,10 +2951,18 @@ export default function PortalPage() {
                   <StyledDatePicker
                     value={managerHalfDayForm.date}
                     onChange={(nextDate) => setManagerHalfDayForm((prev) => ({ ...prev, date: nextDate }))}
-                    placeholder="Half day date"
+                    placeholder="Leave date"
                     className="w-full"
                     theme={theme}
                   />
+                  <select
+                    value={managerHalfDayForm.leaveType}
+                    onChange={(e) => setManagerHalfDayForm((prev) => ({ ...prev, leaveType: e.target.value }))}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="full_day">Full Day</option>
+                    <option value="half_day">Half Day</option>
+                  </select>
                   <input
                     value={managerHalfDayForm.reason}
                     onChange={(e) => setManagerHalfDayForm((prev) => ({ ...prev, reason: e.target.value }))}
@@ -2967,7 +2971,7 @@ export default function PortalPage() {
                   />
                   <button type="submit" disabled={busy} className={btnPrimary}>
                     {isLoading("manager-leave") ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {isLoading("manager-leave") ? "Applying..." : "Set Full Day"}
+                    {isLoading("manager-leave") ? "Applying..." : `Set ${managerHalfDayForm.leaveType === "half_day" ? "Half Day" : "Full Day"}`}
                   </button>
                 </form>
               ) : null}
@@ -3505,11 +3509,11 @@ export default function PortalPage() {
 
                 <div className={`rounded-2xl border p-4 ${theme === "dark" ? "border-blue-400/30 bg-gradient-to-br from-blue-900/30 to-slate-900/80" : "border-slate-200 bg-gradient-to-br from-blue-50 to-white"}`}>
                   <div className="mb-3 flex items-center justify-between">
-                    <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Shift Start Report (Last 7 Days)</p>
+                    <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Shift Start Report (Month-wise)</p>
                     <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">Live Data</span>
                   </div>
                   <p className={`mb-3 text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-600"}`}>
-                    Select any date and get Shift Start entries for that date and previous 6 days.
+                    Select any date and get Shift Start entries for that full month.
                   </p>
                   <div className="mb-3 grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     <StyledDatePicker
