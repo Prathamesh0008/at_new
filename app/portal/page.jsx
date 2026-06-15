@@ -391,6 +391,7 @@ export default function PortalPage() {
   const [worksheetExportMode, setWorksheetExportMode] = useState("day");
   const [worksheetExportDay, setWorksheetExportDay] = useState(getToday());
   const [worksheetExportMonth, setWorksheetExportMonth] = useState(toMonthInputValue());
+  const [employeeAttendanceMonth, setEmployeeAttendanceMonth] = useState(toMonthInputValue());
   const [activityAnchorDate, setActivityAnchorDate] = useState(getToday());
   const [activityEmployeeFilter, setActivityEmployeeFilter] = useState("all");
   const [monthlySummary, setMonthlySummary] = useState([]);
@@ -1069,6 +1070,53 @@ export default function PortalPage() {
     () => todayAttendanceRows.filter((row) => row.empId === user?.id),
     [todayAttendanceRows, user?.id]
   );
+  const todayLoginTimeByEmployee = useMemo(() => {
+    const today = getToday();
+    const latestClockInByEmployee = new Map();
+
+    attendanceRaw
+      .filter((row) => getRowDateKey(row) === today && normalizeAttendanceAction(row.action) === "clock-in")
+      .sort((a, b) => rowTime(b) - rowTime(a))
+      .forEach((row) => {
+        const employeeKey = row.empId || row.employeeId || row.empName || row.employeeName || "unknown";
+        if (!latestClockInByEmployee.has(employeeKey)) {
+          latestClockInByEmployee.set(
+            employeeKey,
+            row.time || new Date(rowTime(row)).toLocaleTimeString("en-IN")
+          );
+        }
+      });
+
+    return latestClockInByEmployee;
+  }, [attendanceRaw]);
+  const employeeMonthlyLoginRows = useMemo(() => {
+    if (!user?.id || !employeeAttendanceMonth) return [];
+
+    const latestClockInByDate = new Map();
+
+    attendanceRaw
+      .filter((row) => {
+        const employeeKey = row.empId || row.employeeId;
+        const dateKey = getRowDateKey(row);
+        return employeeKey === user.id
+          && normalizeAttendanceAction(row.action) === "clock-in"
+          && dateKey.startsWith(`${employeeAttendanceMonth}-`);
+      })
+      .sort((a, b) => rowTime(b) - rowTime(a))
+      .forEach((row) => {
+        const dateKey = getRowDateKey(row);
+        if (!latestClockInByDate.has(dateKey)) {
+          latestClockInByDate.set(dateKey, {
+            id: row.id || `${user.id}-${dateKey}`,
+            dateKey,
+            displayDate: formatDate(dateKey),
+            loginTime: row.time || new Date(rowTime(row)).toLocaleTimeString("en-IN"),
+          });
+        }
+      });
+
+    return Array.from(latestClockInByDate.values());
+  }, [attendanceRaw, employeeAttendanceMonth, user?.id]);
   const detailedActivityRows = useMemo(() => {
     const attendanceEvents = attendanceRaw.map((row) => {
       const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
@@ -2677,6 +2725,7 @@ export default function PortalPage() {
                       <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Employee</th>
                       <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Action</th>
                       <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Date</th>
+                      <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Login Time</th>
                       <th className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Time</th>
                     </tr>
                   </thead>
@@ -2688,6 +2737,9 @@ export default function PortalPage() {
                           <span className={`rounded-full px-2 py-1 text-xs font-medium ${theme === "dark" ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700"}`}>{formatActionLabel(row.action)}</span>
                         </td>
                         <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{formatDate(row.date)}</td>
+                        <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>
+                          {todayLoginTimeByEmployee.get(row.empId || row.employeeId || row.empName || row.employeeName || "unknown") || "-"}
+                        </td>
                         <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.time || new Date(rowTime(row)).toLocaleTimeString()}</td>
                       </tr>
                     ))}
@@ -2697,6 +2749,44 @@ export default function PortalPage() {
                   <p className={`py-4 text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No attendance records for today.</p>
                 ) : null}
               </div>
+
+              {role === "employee" ? (
+                <div className={`mt-5 overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700 bg-slate-900/40" : "border border-slate-200 bg-white"}`}>
+                  <div className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 ${theme === "dark" ? "border-slate-700" : "border-slate-200"}`}>
+                    <div>
+                      <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Previous Login Time (Month-wise)</p>
+                      <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-500"}`}>View your latest shift start for each day in the selected month.</p>
+                    </div>
+                    <input
+                      type="month"
+                      value={employeeAttendanceMonth}
+                      onChange={(e) => setEmployeeAttendanceMonth(e.target.value)}
+                      className={`rounded-lg px-3 py-2 text-sm ${theme === "dark" ? "border border-slate-600 bg-slate-900 text-slate-100" : "border border-slate-300 bg-white text-slate-700"}`}
+                    />
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className={theme === "dark" ? "bg-slate-900/70" : "bg-slate-50"}>
+                        <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
+                          <th className={`px-4 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Date</th>
+                          <th className={`px-4 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Login Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employeeMonthlyLoginRows.map((row) => (
+                          <tr key={row.id} className={`${theme === "dark" ? "border-b border-slate-800 hover:bg-slate-900/60" : "border-b border-slate-100 hover:bg-slate-50/70"} last:border-0`}>
+                            <td className={`px-4 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.displayDate}</td>
+                            <td className={`px-4 py-2.5 font-medium ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{row.loginTime}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {employeeMonthlyLoginRows.length === 0 ? (
+                      <p className={`px-4 py-4 text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No login records found for {formatMonthLabel(employeeAttendanceMonth)}.</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </SectionCard>
           ) : null}
 
