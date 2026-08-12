@@ -39,17 +39,6 @@ export const employees = [
     dateOfJoining: "2025-10-10"
   },
   { 
-    id: "NTS-007", 
-    name: "Prajakta Dhande", 
-    shift: "10:00 AM - 7:00 PM",
-    email: "prajakta@asblogi.com",
-    phone: "+91 9156607486",
-    role: "agent",
-    department: "Operations",
-    password: "prajakta123",
-    dateOfJoining: "2025-10-12"
-  },
-  { 
     id: "NTS-008", 
     name: "Chotelal Singh", 
     shift: "10:00 AM - 7:00 PM",
