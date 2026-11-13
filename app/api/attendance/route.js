@@ -14,6 +14,9 @@ export async function POST(request) {
   try {
     const data = await request.json();
     const { employeeId, employeeName, action, shift, isLate } = data;
+    if (String(employeeId || '').trim().toUpperCase() === 'NTS-MGR') {
+      return Response.json({ error: 'Manager attendance requires the protected manager endpoint' }, { status: 403 });
+    }
     
     const result = await saveAttendance({
       employeeId,

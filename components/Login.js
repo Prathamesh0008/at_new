@@ -12,12 +12,12 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const result = login(employeeId, password);
+    const result = await login(employeeId, password);
 
     if (!result.success) {
       setError(result.message || 'Invalid credentials');

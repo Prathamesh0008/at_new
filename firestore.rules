@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // All portal data now passes through server-verified APIs. Admin SDK access
+    // bypasses rules and is restricted in the API policy, never by client roles.
+    // This includes attendance, payroll, manager state, sessions and throttles.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

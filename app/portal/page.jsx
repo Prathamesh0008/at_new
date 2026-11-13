@@ -1,6 +1,7 @@
 'use client';
+import { refreshFailure, clearRefreshFailure } from '@/lib/portal-refresh-status.mjs';
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import {
   Bell,
@@ -26,7 +27,11 @@ import {
   SunMedium,
   UserCircle2,
 } from "lucide-react";
+import { portalReads, portalDataPlan, pollVisible, mergeDateWindows, NOTIFICATION_INTERVAL_MS, BREAK_INTERVAL_MS } from "@/lib/portal-read-policy.mjs";
+import { useManagerDailyAttendance } from "@/hooks/useManagerDailyAttendance";
+import { mergeManagerDailyEvents, mergeManagerDailyBreaks } from "@/lib/manager-daily-client.mjs";
 import Login from "@/components/Login";
+import { managerAttendanceView, managerAttendanceSummary, attendanceReportData, attendanceReportHtml, attendanceReportWorkbook, attendanceEvidenceFailure, safeAttendanceEvidenceCode, managerLoginTime, punchTime } from "@/lib/attendance-view.mjs";
 import { useAuth } from "@/contexts/AuthContext";
 import { employees } from "@/utils/constants";
 import { isManager } from "@/utils/roles";
@@ -46,7 +51,6 @@ import {
   fetchSalarySlips,
   markAllNotificationsRead,
   markNotificationRead,
-  fetchPendingCounts,
   reviewSalarySlipRequest,
   setSaturdayHoliday,
   fetchTasks,
@@ -57,7 +61,7 @@ import {
   updateTaskStatus,
   upsertWorksheet,
 } from "@/lib/portal-helpers";
-import { fetchAllAttendanceData, fetchAllBreaksData } from "@/lib/firebase-helpers";
+import { fetchAllAttendanceData, fetchAllBreaksData, fetchManagerAttendanceEvidence } from "@/lib/firebase-helpers";
 
 const getToday = () => {
   const now = new Date();
@@ -177,9 +181,8 @@ const FIXED_SHIFT_LABEL = "10:00 AM - 7:00 PM";
 const SHIFT_START_HOUR = 10;
 const SHIFT_END_HOUR = 19;
 const SHIFT_END_MINUTE = 0;
-const AUTO_SYNC_MS = 15000;
-const NOTIFICATION_SYNC_MS = 4000;
-const LIVE_BREAK_POLL_MS = 4000;
+const NOTIFICATION_SYNC_MS = NOTIFICATION_INTERVAL_MS;
+const LIVE_BREAK_POLL_MS = BREAK_INTERVAL_MS;
 const TASK_IMAGE_MAX_BYTES = 500 * 1024;
 const TASK_MAX_ATTACHMENTS = 5;
 const readFileAsDataUrl = (file) =>
@@ -353,11 +356,18 @@ function SectionCard({ title, children, right }) {
 }
 
 export default function PortalPage() {
-  const { user, isAuthenticated, loading, logout } = useAuth();
+  const { user } = useAuth();
+  return <PortalSession key={user?.id || 'signed-out'} />;
+}
+
+function PortalSession() {
+  const { user, isAuthenticated, loading, logout, logoutError, loggingOut, managerSessionError } = useAuth();
   const role = isManager(user?.role) ? "manager" : "employee";
   const [activeTab, setActiveTab] = useState("dashboard");
   const [theme, setTheme] = useState("light");
   const [refreshToken, setRefreshToken] = useState(0);
+  const [visibleRevision, setVisibleRevision] = useState(0);
+  const notificationSnapshotRef = useRef('');
   const [busy, setBusy] = useState(false);
   const [loadingAction, setLoadingAction] = useState("");
   const [message, setMessage] = useState("");
@@ -384,7 +394,7 @@ export default function PortalPage() {
   const [worksheetRows, setWorksheetRows] = useState([]);
   const [salaryRequestRows, setSalaryRequestRows] = useState([]);
   const [salarySlipRows, setSalarySlipRows] = useState([]);
-  const [pendingCounts, setPendingCounts] = useState({ leaves: 0, worksheets: 0 });
+  const pendingCounts = useMemo(() => ({ leaves: leaveRows.filter(row => ["pending", "pending_l1", "pending_l2"].includes(row.status)).length, worksheets: worksheetRows.filter(row => row.status === "submitted").length }), [leaveRows, worksheetRows]);
 
   const [monthFilter, setMonthFilter] = useState(toMonthInputValue());
   const [progressRange, setProgressRange] = useState("month");
@@ -396,6 +406,7 @@ export default function PortalPage() {
   const [activityEmployeeFilter, setActivityEmployeeFilter] = useState("all");
   const [monthlySummary, setMonthlySummary] = useState([]);
   const [attendanceRaw, setAttendanceRaw] = useState([]);
+  const [managerEvidence, setManagerEvidence] = useState({ attendance: [], leaves: [], loadError: null, reconciliationVerified: false });
   const [breakRows, setBreakRows] = useState([]);
   const [salarySlipForm, setSalarySlipForm] = useState({
     employeeId: "",
@@ -435,14 +446,32 @@ export default function PortalPage() {
   const [taskPriorityFilter, setTaskPriorityFilter] = useState("all");
   const [lockedTaskId, setLockedTaskId] = useState("");
   const [worksheetForm, setWorksheetForm] = useState({ date: getToday(), taskSummary: "", blockers: "" });
-  const [shiftRunning, setShiftRunning] = useState(false);
-  const [shiftStartAt, setShiftStartAt] = useState(null);
-  const [activeBreakType, setActiveBreakType] = useState("");
-  const [breakStartAt, setBreakStartAt] = useState(null);
+  const [employeeShiftRunning, setShiftRunning] = useState(false);
+  const [employeeShiftStartAt, setShiftStartAt] = useState(null);
+  const [employeeActiveBreakType, setActiveBreakType] = useState("");
+  const [employeeBreakStartAt, setBreakStartAt] = useState(null);
   const [breakExceededMarker, setBreakExceededMarker] = useState("");
   const [clockTick, setClockTick] = useState(Date.now());
 
   const employeeList = useMemo(() => employees.filter((emp) => !isManager(emp.role)), []);
+  const attendanceManager = useMemo(() => employees.find(emp => emp.id === "NTS-MGR"), []);
+  const isPersonalManager = user?.id === "NTS-MGR" && role === "manager";
+  const managerDaily = useManagerDailyAttendance(isAuthenticated && isPersonalManager, [monthFilter, employeeAttendanceMonth, `${miniCalendarDate.getFullYear()}-${String(miniCalendarDate.getMonth() + 1).padStart(2, "0")}`], refreshToken);
+  const shiftRunning = isPersonalManager ? managerDaily.shiftRunning : employeeShiftRunning;
+  const shiftStartAt = isPersonalManager ? managerDaily.shiftStartAt : employeeShiftStartAt;
+  const activeBreakType = isPersonalManager ? managerDaily.activeBreakType : employeeActiveBreakType;
+  const breakStartAt = isPersonalManager ? managerDaily.breakStartAt : employeeBreakStartAt;
+  const controlBreakTypes = useMemo(() => isPersonalManager ? [...BREAK_TYPES, "Breather"] : BREAK_TYPES, [isPersonalManager]);
+  const attendanceViewRows = useMemo(() => mergeManagerDailyEvents(attendanceRaw, managerDaily.records, attendanceManager?.name), [attendanceRaw, managerDaily.records, attendanceManager?.name]);
+  const managerViewEvidence = useMemo(() => mergeManagerDailyEvents(managerEvidence.attendance, managerDaily.records, attendanceManager?.name), [managerEvidence.attendance, managerDaily.records, attendanceManager?.name]);
+  const breakViewRows = useMemo(() => mergeManagerDailyBreaks(breakRows, managerDaily.records, attendanceManager?.name), [breakRows, managerDaily.records, attendanceManager?.name]);
+  // Keep employeeList unchanged: salary, task assignment and performance remain employee-only.
+  const attendancePeople = useMemo(() => [...employeeList, ...(attendanceManager ? [attendanceManager] : [])], [employeeList, attendanceManager]);
+  const managerDays = useMemo(() => role === "manager" ? managerAttendanceView({ attendance: [...attendanceViewRows, ...managerViewEvidence], leaves: [...leaveRows, ...managerEvidence.leaves], employeeName: attendanceManager?.name }) : [], [role, attendanceViewRows, managerViewEvidence, leaveRows, managerEvidence, attendanceManager?.name]);
+  const managerDaysByDate = useMemo(() => new Map(managerDays.map(row => [row.date, row])), [managerDays]);
+  const attendanceReport = useMemo(() => attendanceReportData({ employeeSummary: monthlySummary, attendance: attendanceViewRows, managerDays, month: monthFilter }), [monthlySummary, attendanceViewRows, managerDays, monthFilter]);
+  const attendanceReportSummary = attendanceReport.summaries;
+  const personalManagerSummary = useMemo(() => managerAttendanceSummary(managerDays, employeeAttendanceMonth, attendanceManager?.name), [managerDays, employeeAttendanceMonth, attendanceManager?.name]);
   const selectedEmployee = useMemo(() => employeeList.find((emp) => emp.id === taskForm.assignedTo), [employeeList, taskForm.assignedTo]);
   const selectedSalaryEmployee = useMemo(
     () => employeeList.find((emp) => emp.id === salarySlipForm.employeeId) || null,
@@ -580,7 +609,8 @@ export default function PortalPage() {
       const dayOfWeek = new Date(year, monthIndex, day).getDay();
       const isSunday = dayOfWeek === 0;
       const isSaturday = dayOfWeek === 6;
-      const holidayName =
+      const managerDay = isPersonalManager ? managerDaysByDate.get(dateKey) : null;
+      const holidayName = managerDay ? ([0, 6].includes(dayOfWeek) ? "Weekly Off" : "") :
         HOLIDAY_MAP[dateKey] ||
         (isSunday ? "Sunday" : "") ||
         (isSaturday && saturdayHolidaySet.has(dateKey) ? "Saturday Off" : "");
@@ -588,6 +618,7 @@ export default function PortalPage() {
       cells.push({
         day,
         dateKey,
+        attendanceStatus: managerDay?.attendanceStatus || "",
         isWeekend: isSunday,
         holidayName,
         leaveStatus: leaveInfo?.status || "",
@@ -598,7 +629,7 @@ export default function PortalPage() {
 
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
-  }, [leaveStatusByDate, miniCalendarDate, saturdayHolidaySet]);
+  }, [leaveStatusByDate, miniCalendarDate, saturdayHolidaySet, isPersonalManager, managerDaysByDate]);
   const miniMonthHolidays = useMemo(() => {
     const year = miniCalendarDate.getFullYear();
     const monthIndex = miniCalendarDate.getMonth();
@@ -608,6 +639,10 @@ export default function PortalPage() {
     for (let day = 1; day <= daysInMonth; day += 1) {
       const key = toDateKey(year, monthIndex, day);
       const dayOfWeek = new Date(year, monthIndex, day).getDay();
+      if (isPersonalManager && managerDaysByDate.has(key)) {
+        if ([0, 6].includes(dayOfWeek)) rows.push({ key, name: "Weekly Off", day });
+        continue;
+      }
       if (HOLIDAY_MAP[key]) {
         rows.push({ key, name: HOLIDAY_MAP[key], day });
         continue;
@@ -622,9 +657,9 @@ export default function PortalPage() {
     }
 
     return rows.sort((a, b) => a.day - b.day);
-  }, [miniCalendarDate, saturdayHolidaySet]);
+  }, [miniCalendarDate, saturdayHolidaySet, isPersonalManager, managerDaysByDate]);
 
-  const refresh = () => setRefreshToken((prev) => prev + 1);
+  const refresh = useCallback(() => { portalReads.invalidate(); setRefreshToken((prev) => prev + 1); }, []);
   const isLoading = (action) => busy && loadingAction === action;
   const setFlash = (text) => {
     setMessage(text);
@@ -679,7 +714,7 @@ export default function PortalPage() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
+    if (!isAuthenticated || !user?.id || isPersonalManager) return;
     const saved = localStorage.getItem(`portal_shift_${user.id}`);
     const savedStartAt = localStorage.getItem(`portal_shift_started_at_${user.id}`);
     const savedBreak = localStorage.getItem(`portal_break_${user.id}`);
@@ -721,70 +756,102 @@ export default function PortalPage() {
     setActiveBreakType(breakValidForToday ? savedBreak : "");
     setBreakStartAt(breakValidForToday ? parsedBreakStartAt : null);
     setBreakExceededMarker(breakValidForToday ? (savedBreakExceededMarker || "") : "");
-  }, [isAuthenticated, user?.id]);
+  }, [isAuthenticated, user?.id, isPersonalManager]);
 
   useEffect(() => {
     const interval = setInterval(() => setClockTick(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) return;
-
-    const loadData = async () => {
-      const [leaves, tasks, worksheets, salaryRequests, salarySlips, counts, attendance, breaks, settings] = await Promise.all([
-        fetchLeaveRequests(role === "manager" ? {} : { employeeId: user.id }),
-        fetchTasks(role === "manager" ? {} : { assignedTo: user.id }),
-        fetchWorksheets(role === "manager" ? {} : { employeeId: user.id }),
-        fetchSalarySlipRequests(role === "manager" ? {} : { employeeId: user.id }),
-        fetchSalarySlips(role === "manager" ? {} : { employeeId: user.id }),
-        role === "manager" ? fetchPendingCounts() : Promise.resolve({ leaves: 0, worksheets: 0 }),
-        fetchAllAttendanceData(),
-        fetchAllBreaksData(),
-        fetchPortalSettings(),
-      ]);
-
-      setLeaveRows(leaves);
-      setTaskRows(tasks);
-      setWorksheetRows(worksheets);
-      setSalaryRequestRows(salaryRequests);
-      setSalarySlipRows(salarySlips);
-      setPendingCounts(counts);
-      setAttendanceRaw(attendance);
-      setBreakRows(breaks);
-      setSaturdayHolidayDates(settings?.saturdayHolidays || []);
+  const attendanceWindows = useMemo(() => {
+    const today = new Date();
+    const recent = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13);
+    const monthWindow = value => {
+      const [year, month] = String(value).slice(0, 7).split("-").map(Number);
+      return { start: new Date(year, month - 1, 1), end: new Date(year, month, 0, 23, 59, 59, 999) };
     };
+    return mergeDateWindows([
+      { start: clampStartOfDay(recent), end: clampEndOfDay(today) },
+      buildProgressWindow(monthFilter, progressRange),
+      monthWindow(activityAnchorDate), monthWindow(employeeAttendanceMonth), monthWindow(salarySlipForm.month),
+      ...(isPersonalManager ? [{ start: new Date(miniCalendarDate.getFullYear(), miniCalendarDate.getMonth(), 1), end: new Date(miniCalendarDate.getFullYear(), miniCalendarDate.getMonth() + 1, 0, 23, 59, 59, 999) }] : []),
+    ]);
+  }, [monthFilter, progressRange, activityAnchorDate, employeeAttendanceMonth, salarySlipForm.month, isPersonalManager, miniCalendarDate]);
 
-    loadData().catch((error) => {
-      console.error(error);
-      setFlash("Failed to load portal data.");
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden) setVisibleRevision(value => value + 1); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isPersonalManager || document.hidden || portalReads.isBlocked()) return;
+    let cancelled = false;
+    const calendarMonth = `${miniCalendarDate.getFullYear()}-${String(miniCalendarDate.getMonth() + 1).padStart(2, "0")}`;
+    fetchManagerAttendanceEvidence([monthFilter, employeeAttendanceMonth, calendarMonth])
+      .then(value => { if (!cancelled) setManagerEvidence({ ...value, loadError: null, reconciliationVerified: false }); })
+      .catch(error => {
+        if (cancelled) return;
+        setManagerEvidence(previous => attendanceEvidenceFailure(previous, error));
+        setMessage(portalReads.isBlocked() ? "Firestore quota exhausted. Automatic reads are paused." : `Could not load attendance data. (${error.evidenceCollection || "attendance"}: ${safeAttendanceEvidenceCode(error)}).`);
+      });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, isPersonalManager, monthFilter, employeeAttendanceMonth, miniCalendarDate, refreshToken, visibleRevision]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id || document.hidden || portalReads.isBlocked()) return;
+    let cancelled = false;
+    const plan = portalDataPlan(role, activeTab);
+    const employee = role === "manager" ? {} : { employeeId: user.id };
+    const jobs = [];
+    const load = (section, read, update) => jobs.push({ section, promise: Promise.resolve().then(read).then(value => { if (!cancelled) update(value); }) });
+    load("Leave", () => fetchLeaveRequests(employee), setLeaveRows);
+    load("Tasks", () => fetchTasks(role === "manager" ? {} : { assignedTo: user.id }), setTaskRows);
+    load("Calendar settings", fetchPortalSettings, settings => setSaturdayHolidayDates(settings?.saturdayHolidays || []));
+    if (plan.worksheets) load("Worksheets", () => fetchWorksheets(employee), setWorksheetRows);
+    if (plan.salary) {
+      load("Salary requests", () => fetchSalarySlipRequests(employee), setSalaryRequestRows);
+      load("Salary slips", () => fetchSalarySlips(employee), setSalarySlipRows);
+    }
+    if (plan.attendance) load("Attendance", async () => {
+      const scopes = attendanceWindows.map(window => ({ ...window, ...employee }));
+      const rows = (await Promise.all(scopes.map(scope => fetchAllAttendanceData(scope)))).flat();
+      return [...new Map(rows.map(row => [row.id, row])).values()];
+    }, setAttendanceRaw);
+    if (plan.breaks) load("Breaks", async () => {
+      const now = new Date();
+      const scopes = plan.allHistory ? attendanceWindows.map(window => ({ ...window, ...employee })) : [{ ...employee, start: clampStartOfDay(now).toISOString(), end: clampEndOfDay(now).toISOString() }];
+      const rows = (await Promise.all(scopes.map(scope => fetchAllBreaksData(scope)))).flat();
+      return [...new Map(rows.map(row => [row.id, row])).values()];
+    }, setBreakRows);
+    Promise.allSettled(jobs.map(job => job.promise)).then(results => {
+      if (cancelled) return;
+      const failure = refreshFailure(jobs, results);
+      if (failure) setMessage(portalReads.isBlocked() ? "Firestore quota exhausted. Automatic reads are paused. Reload only after quota is restored." : failure);
+      else if (results.every(result => result.status === "fulfilled")) setMessage(clearRefreshFailure);
     });
-  }, [isAuthenticated, user?.id, role, refreshToken]);
+    return () => { cancelled = true; };
+  }, [isAuthenticated, user?.id, role, activeTab, refreshToken, attendanceWindows, visibleRevision]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return undefined;
     let cancelled = false;
-
-    const loadNotifications = async () => {
-      try {
-        const noti = await fetchNotifications({ recipientId: user.id, role });
-        if (!cancelled) setNotifications(noti);
-      } catch (error) {
-        if (!cancelled) console.error(error);
-      }
-    };
-
-    loadNotifications();
-    const interval = setInterval(loadNotifications, NOTIFICATION_SYNC_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [isAuthenticated, role, user?.id]);
+    const stop = pollVisible(async () => {
+      const noti = await fetchNotifications({ recipientId: user.id, role });
+      if (cancelled) return;
+      const snapshot = JSON.stringify(noti.map(row => [row.id, row.read, String(row.updatedAt || row.createdAt || "")]));
+      const previous = notificationSnapshotRef.current;
+      notificationSnapshotRef.current = snapshot;
+      setNotifications(noti);
+      // An open export remains an explicit snapshot, never an automatic full-history read.
+      if (previous && previous !== snapshot && activeTab !== "exports") refresh();
+    }, NOTIFICATION_SYNC_MS, { onError: error => { if (!cancelled && error.code !== "READ_PAUSED") setMessage(portalReads.isBlocked() ? "Firestore quota exhausted. Automatic reads are paused." : "Could not refresh notifications."); } });
+    return () => { cancelled = true; stop(); };
+  }, [isAuthenticated, role, user?.id, activeTab, visibleRevision, showNotifications, refreshToken, refresh]);
 
   useEffect(() => {
     // Reset sound tracking when account/role changes to avoid stale comparisons.
+    notificationSnapshotRef.current = "";
     notificationUnreadIdsRef.current = new Set();
     notificationBootstrappedRef.current = false;
     pendingNotificationSoundRef.current = false;
@@ -865,15 +932,6 @@ export default function PortalPage() {
     notificationUnreadIdsRef.current = unreadIds;
   }, [isAuthenticated, notifications, user?.id]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !user?.id) return undefined;
-
-    const interval = setInterval(() => {
-      setRefreshToken((prev) => prev + 1);
-    }, AUTO_SYNC_MS);
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     if (role !== "employee") {
@@ -940,21 +998,19 @@ export default function PortalPage() {
   }, [theme]);
 
   useEffect(() => {
-    if (!isAuthenticated || role !== "manager") return undefined;
-
-    const pollLiveBreaks = async () => {
-      try {
-        const latestBreaks = await fetchAllBreaksData();
-        setBreakRows(latestBreaks);
-      } catch (error) {
-        console.error(error);
+    if (!isAuthenticated || role !== "manager" || activeTab !== "dashboard") return undefined;
+    let cancelled = false;
+    const stop = pollVisible(async () => {
+      const now = new Date();
+      const scope = { start: clampStartOfDay(now).toISOString(), end: clampEndOfDay(now).toISOString(), fresh: true };
+      const [latest, attendance] = await Promise.all([fetchAllBreaksData(scope), fetchAllAttendanceData(scope)]);
+      if (!cancelled) {
+        setBreakRows(latest);
+        setAttendanceRaw(previous => [...previous.filter(row => getRowDateKey(row) !== getToday()), ...attendance]);
       }
-    };
-
-    pollLiveBreaks();
-    const interval = setInterval(pollLiveBreaks, LIVE_BREAK_POLL_MS);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, role]);
+    }, LIVE_BREAK_POLL_MS, { onError: error => { if (!cancelled && error.code !== "READ_PAUSED") setMessage(portalReads.isBlocked() ? "Firestore quota exhausted. Automatic reads are paused." : "Could not refresh live breaks. Use Refresh to retry."); } });
+    return () => { cancelled = true; stop(); };
+  }, [isAuthenticated, role, activeTab, visibleRevision]);
 
   useEffect(() => {
     if (!showNotifications) return;
@@ -971,15 +1027,14 @@ export default function PortalPage() {
 
   useEffect(() => {
     if (!isAuthenticated || role !== "manager") return;
-
+    let cancelled = false;
     const [year, month] = monthFilter.split("-");
-    fetchMonthlyAttendanceSummary({ year, month, employees: employeeList })
-      .then(setMonthlySummary)
-      .catch((error) => {
-        console.error(error);
-        setFlash("Could not load monthly summary.");
-      });
-  }, [employeeList, isAuthenticated, monthFilter, role, refreshToken]);
+    fetchMonthlyAttendanceSummary({ year, month, employees: employeeList, attendance: attendanceRaw, leaves: leaveRows })
+      .then(rows => { if (!cancelled) setMonthlySummary(rows); });
+    return () => { cancelled = true; };
+  }, [employeeList, isAuthenticated, monthFilter, role, attendanceRaw, leaveRows]);
+
+
   useEffect(() => {
     if (role !== "manager") return;
     if (salarySlipForm.employeeId || !employeeList.length) return;
@@ -1027,7 +1082,7 @@ export default function PortalPage() {
     }
 
     const attendanceMap = new Map();
-    attendanceRaw.forEach((row) => {
+    attendanceViewRows.forEach((row) => {
       if (normalizeAttendanceAction(row.action) !== "clock-in") return;
       const date = getRowDateKey(row);
       attendanceMap.set(`${row.empId}-${date}`, true);
@@ -1035,17 +1090,17 @@ export default function PortalPage() {
 
     return {
       dates,
-      rows: employeeList.map((emp) => ({
+      rows: attendancePeople.map((emp) => ({
         employeeId: emp.id,
         name: emp.name,
-        cells: dates.map((date) => Boolean(attendanceMap.get(`${emp.id}-${date}`))),
+        cells: dates.map((date) => emp.id === "NTS-MGR" && managerDaysByDate.has(date) ? managerDaysByDate.get(date).attendanceStatus : Boolean(attendanceMap.get(`${emp.id}-${date}`))),
       })),
     };
-  }, [attendanceRaw, employeeList]);
+  }, [attendanceViewRows, attendancePeople, managerDaysByDate]);
 
   const todayAttendanceRows = useMemo(() => {
     const today = getToday();
-    const sortedRows = attendanceRaw
+    const sortedRows = attendanceViewRows
       .filter((row) => getRowDateKey(row) === today)
       .map((row) => ({ ...row, action: normalizeAttendanceAction(row.action) }))
       .sort((a, b) => {
@@ -1063,8 +1118,11 @@ export default function PortalPage() {
       }
     });
 
-    return Array.from(latestByEmployeeAction.values());
-  }, [attendanceRaw]);
+    const result = Array.from(latestByEmployeeAction.values());
+    const calculated = managerDaysByDate.get(today);
+    if (calculated && !result.some(row => (row.empId || row.employeeId) === "NTS-MGR")) result.push({ ...calculated, empId: calculated.employeeId, empName: calculated.employeeName, action: calculated.attendanceStatus, time: managerLoginTime(calculated), timestamp: null, attendanceViewOnly: true });
+    return result;
+  }, [attendanceViewRows, managerDaysByDate]);
 
   const myAttendanceRows = useMemo(
     () => todayAttendanceRows.filter((row) => row.empId === user?.id),
@@ -1074,7 +1132,7 @@ export default function PortalPage() {
     const today = getToday();
     const latestClockInByEmployee = new Map();
 
-    attendanceRaw
+    attendanceViewRows
       .filter((row) => getRowDateKey(row) === today && normalizeAttendanceAction(row.action) === "clock-in")
       .sort((a, b) => rowTime(b) - rowTime(a))
       .forEach((row) => {
@@ -1088,13 +1146,13 @@ export default function PortalPage() {
       });
 
     return latestClockInByEmployee;
-  }, [attendanceRaw]);
+  }, [attendanceViewRows]);
   const employeeMonthlyLoginRows = useMemo(() => {
     if (!user?.id || !employeeAttendanceMonth) return [];
 
     const latestClockInByDate = new Map();
 
-    attendanceRaw
+    attendanceViewRows
       .filter((row) => {
         const employeeKey = row.empId || row.employeeId;
         const dateKey = getRowDateKey(row);
@@ -1116,9 +1174,14 @@ export default function PortalPage() {
       });
 
     return Array.from(latestClockInByDate.values());
-  }, [attendanceRaw, employeeAttendanceMonth, user?.id]);
+  }, [attendanceViewRows, employeeAttendanceMonth, user?.id]);
+  const personalAttendanceRows = useMemo(() => {
+    if (!isPersonalManager) return employeeMonthlyLoginRows;
+    const selected = managerDays.filter(row => row.month === employeeAttendanceMonth).map(row => ({ ...row, dateKey: row.date, displayDate: formatDate(row.date), loginTime: managerLoginTime(row), logoutTime: punchTime(row.clockOut) })).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+    return selected.length ? selected : employeeMonthlyLoginRows;
+  }, [isPersonalManager, employeeMonthlyLoginRows, managerDays, employeeAttendanceMonth]);
   const detailedActivityRows = useMemo(() => {
-    const attendanceEvents = attendanceRaw.map((row) => {
+    const attendanceEvents = attendanceViewRows.map((row) => {
       const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
       const dateKey = getRowDateKey(row);
       return {
@@ -1134,7 +1197,7 @@ export default function PortalPage() {
       };
     });
 
-    const breakEvents = breakRows.map((row) => {
+    const breakEvents = breakViewRows.map((row) => {
       const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
       const rawAction = String(row.action || "").toLowerCase();
       const inferredAction = rawAction || (String(row.status || "").toLowerCase() === "active" ? "start" : "end");
@@ -1153,7 +1216,7 @@ export default function PortalPage() {
     });
 
     return [...attendanceEvents, ...breakEvents].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [attendanceRaw, breakRows]);
+  }, [attendanceViewRows, breakViewRows]);
 
   const filteredDetailedActivityRows = useMemo(() => {
     const selectedDate = parseInputDate(activityAnchorDate) || new Date();
@@ -1267,8 +1330,9 @@ export default function PortalPage() {
   }, [teamChartRows]);
   const liveBreakRows = useMemo(() => {
     const today = getToday();
-    const todayBreaks = breakRows
+    const todayBreaks = breakViewRows
       .filter((row) => {
+        if (row.source === "verified_manager_daily" && row.date === managerDaily.snapshot?.date && row.breakType === managerDaily.activeBreakType) return true;
         const ts = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || Date.now());
         if (Number.isNaN(ts.getTime())) return false;
         const rowDateFromField = String(row.date || "").slice(0, 10);
@@ -1278,7 +1342,7 @@ export default function PortalPage() {
       .sort((a, b) => {
         const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp || 0).getTime();
         const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp || 0).getTime();
-        return bTime - aTime;
+        return bTime - aTime || (a.employeeId === "NTS-MGR" && b.employeeId === "NTS-MGR" ? Number(b.action === "end") - Number(a.action === "end") : 0);
       });
 
     const latestByEmployee = new Map();
@@ -1288,7 +1352,7 @@ export default function PortalPage() {
     });
 
     return Array.from(latestByEmployee.values()).filter((row) => String(row.status || "").toLowerCase() === "active");
-  }, [breakRows]);
+  }, [breakViewRows, managerDaily.activeBreakType, managerDaily.snapshot?.date]);
   const saveShiftState = (running, startedAt = null) => {
     localStorage.setItem(`portal_shift_${user.id}`, running ? "running" : "stopped");
     setShiftRunning(running);
@@ -1320,7 +1384,18 @@ export default function PortalPage() {
     setActiveBreakType(breakType);
   };
 
+  const handleManagerDaily = async (action, breakType, retry = false) => {
+    setBusy(true);
+    setLoadingAction(action === "start" ? "start-shift" : action === "end" ? "end-shift" : `break-${breakType}-${action === "break-start" ? "start" : "end"}`);
+    try {
+      if (retry) await managerDaily.retry(); else await managerDaily.perform(action, breakType);
+      setFlash("Manager attendance saved with server timestamps.");
+    } catch (error) { setFlash(error.message); }
+    finally { setBusy(false); setLoadingAction(""); }
+  };
+
   const handleStartShift = async () => {
+    if (isPersonalManager) return handleManagerDaily("start");
     if (shiftRunning) return setFlash("Shift already running.");
     setBusy(true);
     setLoadingAction("start-shift");
@@ -1353,6 +1428,7 @@ export default function PortalPage() {
   };
 
   const handleEndShift = async () => {
+    if (isPersonalManager) return handleManagerDaily("end");
     if (!shiftRunning) return setFlash("No active shift.");
     setBusy(true);
     setLoadingAction("end-shift");
@@ -1383,6 +1459,7 @@ export default function PortalPage() {
   };
 
   const handleBreak = async (breakType, action) => {
+    if (isPersonalManager) return handleManagerDaily(action === "start" ? "break-start" : "break-end", breakType);
     if (!shiftRunning) return setFlash("Start shift before break.");
     if (breakRequestInFlightRef.current) return;
     if (action === "start" && activeBreakType && activeBreakType !== breakType) {
@@ -1671,27 +1748,16 @@ export default function PortalPage() {
   };
 
   const exportAttendanceExcel = () => {
-    if (!monthlySummary.length) return setFlash("No summary data available.");
-    const exportRows = monthlySummary.map((row) => ({
-      Employee: row.employeeName,
-      PresentDays: row.presentDays,
-      HalfDays: row.halfDays || 0,
-      PayableDays: row.payableDays ?? row.presentDays,
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Monthly Summary");
+    if (!attendanceReport.summaryRows.length) return setFlash("No summary data available.");
+    const workbook = attendanceReportWorkbook(XLSX, attendanceReport);
     XLSX.writeFile(workbook, `attendance-summary-${monthFilter}.xlsx`);
   };
 
   const exportAttendancePdf = () => {
-    if (!monthlySummary.length) return setFlash("No summary data available.");
-    const rows = monthlySummary
-      .map((row) => `<tr><td>${row.employeeName}</td><td>${row.presentDays}</td><td>${row.halfDays || 0}</td><td>${row.payableDays ?? row.presentDays}</td></tr>`)
-      .join("");
+    if (!attendanceReport.summaryRows.length) return setFlash("No summary data available.");
     const win = window.open("", "_blank");
     if (!win) return setFlash("Please allow popups for PDF export.");
-    win.document.write(`<html><body><h2>Attendance Summary (${monthFilter})</h2><table border="1" cellpadding="8"><tr><th>Employee</th><th>Present Days</th><th>Half Days</th><th>Payable Days</th></tr>${rows}</table><script>window.print();</script></body></html>`);
+    win.document.write(attendanceReportHtml(attendanceReport, monthFilter));
     win.document.close();
   };
 
@@ -1733,7 +1799,7 @@ export default function PortalPage() {
     const rangeStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1, 0, 0, 0, 0);
     const rangeEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    const shiftStartRows = attendanceRaw
+    const shiftStartRows = attendanceViewRows
       .map((row) => {
         const timestamp = row.timestamp instanceof Date ? row.timestamp : new Date(row.timestamp || row.date || Date.now());
         return {
@@ -2040,16 +2106,22 @@ export default function PortalPage() {
   };
 
   const shiftElapsedMs = shiftRunning && shiftStartAt ? Math.max(0, clockTick - shiftStartAt) : 0;
-  const breakTargetMinutes = BREAK_TARGET_MINUTES[activeBreakType] || 15;
+  const breakTargetMinutes = isPersonalManager && activeBreakType === "Breather" ? 0 : BREAK_TARGET_MINUTES[activeBreakType] || 15;
   const breakElapsedMs = activeBreakType && breakStartAt ? Math.max(0, clockTick - breakStartAt) : 0;
-  const breakProgress = activeBreakType ? Math.min(100, (breakElapsedMs / (breakTargetMinutes * 60000)) * 100) : 0;
-  const isBreakOverrun = activeBreakType && breakElapsedMs > breakTargetMinutes * 60000;
+  const breakProgress = activeBreakType && breakTargetMinutes > 0 ? Math.min(100, (breakElapsedMs / (breakTargetMinutes * 60000)) * 100) : 0;
+  const isBreakOverrun = activeBreakType && breakTargetMinutes > 0 && breakElapsedMs > breakTargetMinutes * 60000;
   const breakRemainingMs = Math.max(0, breakTargetMinutes * 60000 - breakElapsedMs);
   const totalBreakAllowanceMs = useMemo(
     () => BREAK_TYPES.reduce((sum, type) => sum + ((Number(BREAK_TARGET_MINUTES[type]) || 0) * 60000), 0),
     []
   );
   const breakUsageByType = useMemo(() => {
+    if (isPersonalManager) {
+      return Object.fromEntries(controlBreakTypes.map(type => {
+        const entry = managerDaily.snapshot?.record?.breaks?.[type];
+        return [type, entry?.start ? Math.max(0, (entry.end ? Date.parse(entry.end) : clockTick) - Date.parse(entry.start)) : 0];
+      }));
+    }
     if (!user?.id) return BREAK_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
     const today = getToday();
     const usage = BREAK_TYPES.reduce((acc, type) => ({ ...acc, [type]: 0 }), {});
@@ -2100,7 +2172,7 @@ export default function PortalPage() {
     }
 
     return usage;
-  }, [activeBreakType, breakRows, breakStartAt, clockTick, user?.id]);
+  }, [activeBreakType, breakRows, breakStartAt, clockTick, user?.id, isPersonalManager, controlBreakTypes, managerDaily.snapshot]);
   const totalBreakUsedMs = useMemo(
     () => BREAK_TYPES.reduce((sum, type) => sum + (breakUsageByType[type] || 0), 0),
     [breakUsageByType]
@@ -2329,11 +2401,15 @@ export default function PortalPage() {
               ) : null}
             </button>
             <button
-              onClick={logout}
+              onClick={() => { void logout(); }}
+              disabled={loggingOut}
               className={`inline-flex h-10 items-center justify-center rounded-xl border px-3 text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 ${theme === "dark" ? "border-[#A346FF]/65 bg-gradient-to-r from-[#A346FF]/85 to-[#7B2FD2]/85 text-white hover:from-[#A346FF] hover:to-[#8A38EA] hover:shadow-[0_12px_28px_-16px_rgba(163,70,255,1)]" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}
             >
-              Logout
+              {loggingOut ? "Signing out..." : "Logout"}
             </button>
+
+            <button type="button" onClick={refresh} disabled={busy || portalReads.isBlocked()} className="rounded-xl border px-3 py-2 text-sm">Refresh</button>
+            {logoutError ? <p role="alert" className="text-sm text-red-500">{logoutError}</p> : null}
 
             {showNotifications ? (
               <div className={`absolute right-0 top-12 z-30 w-[min(94vw,380px)] rounded-xl border p-0 shadow-xl ${theme === "dark" ? "border-violet-900/70 bg-[#000721]" : "border-slate-200 bg-white"}`}>
@@ -2481,22 +2557,22 @@ export default function PortalPage() {
                     !cell
                       ? "text-transparent"
                       : theme === "dark"
-                        ? cell.leaveStatus === "approved"
+                        ? (["Present", "Leave"].includes(cell.attendanceStatus) || cell.leaveStatus === "approved")
                           ? "bg-emerald-500/25 font-semibold text-emerald-200"
                           : cell.leaveStatus === "pending"
                             ? "bg-amber-500/25 font-semibold text-amber-200"
-                            : cell.leaveStatus === "rejected"
+                            : (cell.attendanceStatus === "Absent" || cell.leaveStatus === "rejected")
                               ? "bg-rose-500/25 font-semibold text-rose-200"
                               : cell.holidayName
                                 ? "bg-violet-500/25 font-semibold text-violet-200"
                                 : cell.isWeekend
                                   ? "bg-slate-800/70 text-slate-300"
                                   : "bg-slate-900/40 text-slate-300"
-                        : cell.leaveStatus === "approved"
+                        : (["Present", "Leave"].includes(cell.attendanceStatus) || cell.leaveStatus === "approved")
                           ? "bg-emerald-200 font-semibold text-emerald-800"
                           : cell.leaveStatus === "pending"
                             ? "bg-amber-200 font-semibold text-amber-800"
-                            : cell.leaveStatus === "rejected"
+                            : (cell.attendanceStatus === "Absent" || cell.leaveStatus === "rejected")
                               ? "bg-rose-200 font-semibold text-rose-800"
                               : cell.holidayName
                                 ? "bg-red-100 font-semibold text-red-700"
@@ -2504,7 +2580,7 @@ export default function PortalPage() {
                                   ? "bg-amber-100/70 text-amber-700"
                                   : "text-slate-700"
                   } ${cell?.isToday ? (theme === "dark" ? "ring-1 ring-violet-400" : "ring-1 ring-slate-400") : ""}`}
-                  title={cell?.leaveStatus ? `Leave: ${cell.leaveStatus}${cell.leaveReason ? ` | ${cell.leaveReason}` : ""}` : cell?.holidayName || ""}
+                  title={cell?.attendanceStatus || (cell?.leaveStatus ? `Leave: ${cell.leaveStatus}${cell.leaveReason ? ` | ${cell.leaveReason}` : ""}` : cell?.holidayName || "")}
                 >
                   {cell ? cell.day : "."}
                 </div>
@@ -2546,13 +2622,15 @@ export default function PortalPage() {
 
           {activeTab === "dashboard" ? (
             <SectionCard title="Attendance Module">
-              {role === "employee" ? (
+              {role === "employee" || isPersonalManager ? (
                 <div className="mb-4 space-y-3">
+                  {isPersonalManager && (managerDaily.error || !managerDaily.ready) ? <p role="status" className="text-xs">{managerSessionError || managerDaily.error || "Checking the existing secure manager session..."} Use Refresh to recover shift state.</p> : null}
+                  {isPersonalManager && managerDaily.pending ? <button type="button" className={btnSecondary} disabled={busy || managerDaily.busy || managerDaily.paused} onClick={() => handleManagerDaily(managerDaily.pending.action, managerDaily.pending.breakType, true)}>Retry pending action</button> : null}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={handleStartShift}
-                        disabled={busy || shiftRunning}
+                        disabled={busy || (isPersonalManager ? !managerDaily.canStart : shiftRunning)}
                         className={btnSuccess}
                       >
                         {isLoading("start-shift") ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -2560,7 +2638,7 @@ export default function PortalPage() {
                       </button>
                       <button
                         onClick={handleEndShift}
-                        disabled={busy || !shiftRunning}
+                        disabled={busy || (isPersonalManager ? !managerDaily.canEnd : !shiftRunning)}
                         className={btnDanger}
                       >
                         {isLoading("end-shift") ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
@@ -2581,7 +2659,7 @@ export default function PortalPage() {
                           </div>
                         </div>
                         <div className="space-y-1">
-                          {BREAK_TYPES.map((type) => {
+                          {controlBreakTypes.map((type) => {
                             const dotColor = BREAK_TYPE_COLORS[type] || "#64748b";
                             return (
                               <div key={`break-donut-${type}`} className={`flex items-center gap-1 text-[11px] ${theme === "dark" ? "text-slate-200" : "text-slate-700"}`}>
@@ -2632,7 +2710,7 @@ export default function PortalPage() {
                             <div className="mt-2 flex items-center justify-between text-xs">
                               <span className={theme === "dark" ? "text-white" : "text-slate-700"}>Elapsed: {formatDuration(breakElapsedMs)}</span>
                               <span className={isBreakOverrun ? (theme === "dark" ? "text-white" : "text-red-700") : (theme === "dark" ? "text-white" : "text-slate-600")}>
-                                {isBreakOverrun ? `Over by ${formatDuration(breakElapsedMs - breakTargetMinutes * 60000)}` : `Left ${formatDuration(breakRemainingMs)}`}
+                                {breakTargetMinutes === 0 ? "No fixed limit" : isBreakOverrun ? `Over by ${formatDuration(breakElapsedMs - breakTargetMinutes * 60000)}` : `Left ${formatDuration(breakRemainingMs)}`}
                               </span>
                             </div>
                           </>
@@ -2659,11 +2737,11 @@ export default function PortalPage() {
                         </span>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {BREAK_TYPES.map((type) => (
+                      {controlBreakTypes.map((type) => (
                         <button
                           key={type}
                           onClick={() => handleBreak(type, activeBreakType === type ? "end" : "start")}
-                          disabled={busy || !shiftRunning}
+                          disabled={busy || (isPersonalManager ? !managerDaily.canBreak(type) : !shiftRunning)}
                           className={`group inline-flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 ${
                             activeBreakType === type
                               ? "border-orange-600 bg-orange-600 text-white hover:bg-orange-700"
@@ -2685,7 +2763,7 @@ export default function PortalPage() {
                             </span>
                           </span>
                           <span className="rounded-md bg-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/95">
-                            {BREAK_TARGET_MINUTES[type] || 15}m
+                            {type === "Breather" ? "No fixed limit" : `${BREAK_TARGET_MINUTES[type] || 15}m`}
                           </span>
                         </button>
                       ))}
@@ -2738,9 +2816,9 @@ export default function PortalPage() {
                         </td>
                         <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{formatDate(row.date)}</td>
                         <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>
-                          {todayLoginTimeByEmployee.get(row.empId || row.employeeId || row.empName || row.employeeName || "unknown") || "-"}
+                          {todayLoginTimeByEmployee.get(row.empId || row.employeeId || row.empName || row.employeeName || "unknown") || (row.attendanceViewOnly ? managerLoginTime(row) : "-")}
                         </td>
-                        <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.time || new Date(rowTime(row)).toLocaleTimeString()}</td>
+                        <td className={`px-3 py-2 ${theme === "dark" ? "text-white" : "text-slate-700"}`}>{row.attendanceViewOnly ? row.time || "" : row.time || new Date(rowTime(row)).toLocaleTimeString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2750,12 +2828,13 @@ export default function PortalPage() {
                 ) : null}
               </div>
 
-              {role === "employee" ? (
+              {role === "employee" || isPersonalManager ? (
                 <div className={`mt-5 overflow-hidden rounded-xl ${theme === "dark" ? "border border-slate-700 bg-slate-900/40" : "border border-slate-200 bg-white"}`}>
                   <div className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 ${theme === "dark" ? "border-slate-700" : "border-slate-200"}`}>
                     <div>
-                      <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Previous Login Time (Month-wise)</p>
-                      <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-500"}`}>View your latest shift start for each day in the selected month.</p>
+                      <p className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{isPersonalManager ? "Attendance History (Month-wise)" : "Previous Login Time (Month-wise)"}</p>
+                      {!isPersonalManager ? <p className={`text-xs ${theme === "dark" ? "text-slate-300" : "text-slate-500"}`}>View your latest shift start for each day in the selected month.</p> : null}
+                      {isPersonalManager && personalManagerSummary ? <p className="text-xs">Present: {personalManagerSummary.presentDays} | Absent: {personalManagerSummary.absentDays} | Weekly Off: {personalManagerSummary.weeklyOffDays} | Working days: {personalManagerSummary.workingDays}</p> : null}
                     </div>
                     <input
                       type="month"
@@ -2770,18 +2849,20 @@ export default function PortalPage() {
                         <tr className={`text-left ${theme === "dark" ? "border-b border-slate-700" : "border-b border-slate-200"}`}>
                           <th className={`px-4 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Date</th>
                           <th className={`px-4 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Login Time</th>
+                          {isPersonalManager ? <><th className={`px-4 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Status</th><th className={`px-4 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Logout Time</th></> : null}
                         </tr>
                       </thead>
                       <tbody>
-                        {employeeMonthlyLoginRows.map((row) => (
+                        {personalAttendanceRows.map((row) => (
                           <tr key={row.id} className={`${theme === "dark" ? "border-b border-slate-800 hover:bg-slate-900/60" : "border-b border-slate-100 hover:bg-slate-50/70"} last:border-0`}>
                             <td className={`px-4 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.displayDate}</td>
                             <td className={`px-4 py-2.5 font-medium ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{row.loginTime}</td>
+                            {isPersonalManager ? <><td className={`px-4 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.attendanceStatus || "Present"}</td><td className={`px-4 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.logoutTime || ""}</td></> : null}
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {employeeMonthlyLoginRows.length === 0 ? (
+                    {personalAttendanceRows.length === 0 ? (
                       <p className={`px-4 py-4 text-sm ${theme === "dark" ? "text-white" : "text-slate-500"}`}>No login records found for {formatMonthLabel(employeeAttendanceMonth)}.</p>
                     ) : null}
                   </div>
@@ -2815,9 +2896,9 @@ export default function PortalPage() {
                             {r.cells.map((p, idx) => (
                               <td
                                 key={`${r.employeeId}-${idx}`}
-                                className={`border border-slate-200 px-2 py-1 ${p ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-500/30 dark:text-white" : "bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-white"} dark:border-slate-700`}
+                                className={`border border-slate-200 px-2 py-1 ${(p === true || p === "Present" || p === "Leave") ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-500/30 dark:text-white" : p === "Weekly Off" ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-white" : "bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-white"} dark:border-slate-700`}
                               >
-                                {p ? "P" : "A"}
+                                {typeof p === "string" ? ({ Present: "P", Absent: "A", "Weekly Off": "WO", Leave: "L" }[p] || p) : p ? "P" : "A"}
                               </td>
                             ))}
                           </tr>
@@ -3488,7 +3569,6 @@ export default function PortalPage() {
                   <div>
                     <p className={`text-xs uppercase tracking-[0.2em] ${theme === "dark" ? "text-white" : "text-violet-100"}`}>Monthly Attendance</p>
                     <h3 className="text-lg font-semibold">Download reports in one click</h3>
-                    <p className={`text-sm ${theme === "dark" ? "text-white" : "text-violet-100"}`}>Present days are calculated from unique Shift Start entries.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -3518,12 +3598,12 @@ export default function PortalPage() {
               <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div className={`rounded-xl p-3 ${theme === "dark" ? "border border-slate-700 bg-slate-900/70" : "border border-slate-200 bg-slate-50"}`}>
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Employees</p>
-                  <p className={`mt-1 text-2xl font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{monthlySummary.length}</p>
+                  <p className={`mt-1 text-2xl font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{attendanceReportSummary.length}</p>
                 </div>
                 <div className={`rounded-xl p-3 ${theme === "dark" ? "border border-slate-700 bg-slate-900/70" : "border border-slate-200 bg-slate-50"}`}>
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Payable Days Total</p>
                   <p className={`mt-1 text-2xl font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
-                    {monthlySummary.reduce((sum, row) => sum + Number((row.payableDays ?? row.presentDays) || 0), 0).toFixed(1)}
+                    {attendanceReportSummary.reduce((sum, row) => sum + Number((row.payableDays ?? row.presentDays) || 0), 0).toFixed(1)}
                   </p>
                 </div>
                 <div className={`rounded-xl p-3 sm:col-span-2 lg:col-span-1 ${theme === "dark" ? "border border-slate-700 bg-slate-900/70" : "border border-slate-200 bg-slate-50"}`}>
@@ -3541,15 +3621,17 @@ export default function PortalPage() {
                         <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Present Days</th>
                         <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Half Days</th>
                         <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Payable Days</th>
+                        <th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Absent Days</th><th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Weekly Off</th><th className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-700"}`}>Working Days</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {monthlySummary.map((row) => (
+                      {attendanceReportSummary.map((row) => (
                         <tr key={row.employeeId} className={`${theme === "dark" ? "border-b border-slate-800 hover:bg-slate-900/60" : "border-b border-slate-100 hover:bg-slate-50/70"} last:border-0`}>
                           <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.employeeName}</td>
                           <td className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{row.presentDays}</td>
                           <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.halfDays || 0}</td>
                           <td className={`px-3 py-2.5 font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{row.payableDays ?? row.presentDays}</td>
+                          <td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.absentDays ?? ""}</td><td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.weeklyOffDays ?? ""}</td><td className={`px-3 py-2.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>{row.workingDays ?? ""}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3620,7 +3702,7 @@ export default function PortalPage() {
                       className={`h-12 rounded-lg px-3 py-2 text-sm ${theme === "dark" ? "border border-slate-600 bg-slate-900 text-slate-100" : "border border-slate-300 bg-white"}`}
                     >
                       <option value="all">All Employees</option>
-                      {employeeList.map((emp) => (
+                      {attendancePeople.map((emp) => (
                         <option key={emp.id} value={emp.id}>{emp.name}</option>
                       ))}
                     </select>

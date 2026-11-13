@@ -1,0 +1,12 @@
+// Merge these scoped matches into the project's existing Firestore rules before rollout.
+// Remove any overlapping wildcard write grants: Firestore allow rules are ORed.
+// Admin SDK bypasses these rules; browser attendance writes must always be denied.
+match /attendance/{record} { allow write: if false; }
+match /attendanceDaily/{record} { allow write: if false; }
+match /breaks/{record} { allow write: if false; }
+match /attendanceState/{record} { allow read, write: if false; }
+match /attendanceBackfills/{record} { allow read, write: if false; }
+match /attendanceBackfillPreviews/{record} { allow read, write: if false; }
+match /attendanceAudit/{record} { allow read, write: if false; }
+match /loginAttempts/{record} { allow read, write: if false; }
+match /portal_settings/backfill_holidays { allow write: if false; }

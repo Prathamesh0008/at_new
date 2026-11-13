@@ -1,0 +1,454 @@
+{
+  "method": "Static source inventory; counts are estimates, not production measurements",
+  "pageSize": 200,
+  "inventory": [
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 107,
+      "owner": "fetchAllAttendanceData",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 167,
+      "owner": "fetchAttendanceFromFirebase",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 204,
+      "owner": "fetchAllBreaksData",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 250,
+      "owner": "fetchBreaksFromFirebase",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 284,
+      "owner": "fetchAllLeavesData",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 320,
+      "owner": "fetchLeavesFromFirebase",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 353,
+      "owner": "fetchAllActivities",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 463,
+      "owner": "fetchAttendanceByEmployee",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 494,
+      "owner": "fetchBreaksByEmployee",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 525,
+      "owner": "fetchLeavesByEmployee",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firebase-helpers.js",
+      "line": 562,
+      "owner": "fetchTodaysData",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 172,
+      "owner": "getVisibleNotificationDocs",
+      "code": "getDocs(query(ref, where(\"recipientId\", \"==\", recipientId), ...unreadFilter)),",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "up to 321 polls per visible 8-hour session plus panel toggles"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 173,
+      "owner": "getVisibleNotificationDocs",
+      "code": "getDocs(query(ref, where(\"recipientId\", \"==\", null), where(\"recipientRole\", \"==\", null), ...unreadFilter)),",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "up to 321 polls per visible 8-hour session plus panel toggles"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 177,
+      "owner": "getVisibleNotificationDocs",
+      "code": "requests.push(getDocs(query(ref, where(\"recipientRole\", \"==\", role), ...unreadFilter)));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "up to 321 polls per visible 8-hour session plus panel toggles"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 343,
+      "owner": "fetchLeaveRequests",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.LEAVES), ...(filters.employeeId ? [where(\"employeeId\", \"==\", filters.employeeId)] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 362,
+      "owner": "reviewLeaveRequest",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 409,
+      "owner": "cancelLeaveRequest",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 448,
+      "owner": "updateLeaveReason",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 483,
+      "owner": "cancelManagerAssignedLeave",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 590,
+      "owner": "fetchTasks",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.TASKS), ...(filters.assignedTo ? [or(where(\"assignedTo\", \"==\", filters.assignedTo), where(\"employeeId\", \"==\", filters.assignedTo))] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 625,
+      "owner": "updateTaskStatus",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 705,
+      "owner": "upsertWorksheet",
+      "code": "const snapshot = await getDocs(collection(db, COLLECTIONS.WORKSHEETS));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 752,
+      "owner": "fetchWorksheets",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.WORKSHEETS), ...(filters.employeeId ? [where(\"employeeId\", \"==\", filters.employeeId)] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 764,
+      "owner": "reviewWorksheet",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 815,
+      "owner": "fetchReimbursements",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.REIMBURSEMENTS), ...(filters.employeeId ? [where(\"employeeId\", \"==\", filters.employeeId)] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 833,
+      "owner": "reviewReimbursement",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 886,
+      "owner": "fetchAttendanceCorrections",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.CORRECTIONS), ...(filters.employeeId ? [where(\"employeeId\", \"==\", filters.employeeId)] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 904,
+      "owner": "reviewAttendanceCorrection",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 982,
+      "owner": "fetchSalarySlipRequests",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.SALARY_REQUESTS), ...(filters.employeeId ? [where(\"employeeId\", \"==\", filters.employeeId)] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 1000,
+      "owner": "reviewSalarySlipRequest",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 1043,
+      "owner": "createSalarySlipRecord",
+      "code": "const snapshot = await getDocs(collection(db, COLLECTIONS.SALARY_SLIPS));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 1103,
+      "owner": "fetchSalarySlips",
+      "code": "const snapshot = await getDocs(query(collection(db, COLLECTIONS.SALARY_SLIPS), ...(filters.employeeId ? [where(\"employeeId\", \"==\", filters.employeeId)] : [])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 1115,
+      "owner": "fetchPortalSettings",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/portal-helpers.js",
+      "line": 1129,
+      "owner": "setSaturdayHoliday",
+      "code": "const snap = await getDoc(ref);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "utils/excelExport.js",
+      "line": 42,
+      "owner": "fetchAttendanceDataFromFirebase",
+      "code": "const querySnapshot = await getDocs(q);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 12,
+      "owner": "mutateAttendance",
+      "code": "const snap=await tx.get(ref); let state=snap.data();",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "explicit shift/break action; transaction retries may multiply reads"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 16,
+      "owner": "mutateAttendance",
+      "code": "const daily=await tx.get(dailyRef);",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "explicit shift/break action; transaction retries may multiply reads"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 17,
+      "owner": "mutateAttendance",
+      "code": "const legacy=await tx.get(db.collection('attendance').where('employeeId','==',user.id).where('date','==',state.date));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "explicit shift/break action; transaction retries may multiply reads"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 18,
+      "owner": "mutateAttendance",
+      "code": "const legacyEmp=await tx.get(db.collection('attendance').where('empId','==',user.id).where('date','==',state.date));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "explicit shift/break action; transaction retries may multiply reads"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 30,
+      "owner": "mutateAttendance",
+      "code": "const breaks=await tx.get(db.collection('breaks').where('employeeId','==',user.id).where('date','==',state.date));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "explicit shift/break action; transaction retries may multiply reads"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 31,
+      "owner": "mutateAttendance",
+      "code": "const legacyBreaks=await tx.get(db.collection('breaks').where('empId','==',user.id).where('date','==',state.date));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "explicit shift/break action; transaction retries may multiply reads"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 56,
+      "owner": "getPersonalAttendance",
+      "code": "const db=await serverDb(); const state=await db.collection('attendanceState').doc(user.id).get();",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "screen entry and explicit approved-history refresh only"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 64,
+      "owner": "getPersonalAttendance",
+      "code": "let config=(await db.collection('portal_settings').doc('backfill_holidays').get()).data();",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "screen entry and explicit approved-history refresh only"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 66,
+      "owner": "getPersonalAttendance",
+      "code": "const managerReview=(await db.collection('attendanceBackfillPreviews').doc(MANAGER_HOLIDAY_REVIEW_ID).get()).data();",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "screen entry and explicit approved-history refresh only"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 69,
+      "owner": "getPersonalAttendance",
+      "code": "const leaves=await db.collection('leave_requests_v2').where('employeeId','==',user.id).get();",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "screen entry and explicit approved-history refresh only"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 92,
+      "owner": "readPersonalPages",
+      "code": "const page=await (cursor?query.startAfter(cursor):query).limit(200).get();",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 102,
+      "owner": "getAttendanceState",
+      "code": "const snapshot=await db.collection('attendanceState').doc(user.id).get();",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "up to 480 visible-minute polls plus explicit own shift/break actions"
+    },
+    {
+      "file": "lib/attendanceStorage.js",
+      "line": 109,
+      "owner": "getTeamBreakStates",
+      "code": "const snapshots=await db.getAll(...employees.map(employee=>db.collection('attendanceState').doc(employee.id)));",
+      "estimatedDocumentReads": "E known account documents (currently 5), once per visible minute",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "app/api/session/route.js",
+      "line": 26,
+      "owner": "POST",
+      "code": "await wait(db.runTransaction(async tx => { const snap = await tx.get(ref); const prior = snap.data(); if (prior?.until > Date.now() && prior.count >= 10) throw Object.assign(new Error('Too many attempts; try again later'), {status:429}); tx.set(ref, {count: prior?.until > Date.now() ? prior.count + 1 : 1, until: prior?.until > Date.now() ? prior.until : Date.now()+900000}); }, { maxAttempts: 1 }));",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "app/api/attendance/backfill/route.js",
+      "line": 15,
+      "owner": "inputs",
+      "code": "// Firestore references have .get(); transactions use transaction.get(reference).",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "app/api/attendance/backfill/route.js",
+      "line": 16,
+      "owner": "inputs",
+      "code": "const get = ref => reader === db ? ref.get() : reader.get(ref);",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "app/api/attendance/backfill/route.js",
+      "line": 74,
+      "owner": "previous",
+      "code": "const previous = (await tx.get(reviewRef(db))).data() || null;",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "app/api/attendance/backfill/route.js",
+      "line": 92,
+      "owner": "preview",
+      "code": "const preview = (await tx.get(db.collection('attendanceBackfillPreviews').doc(body.previewId))).data();",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firestore-reads.js",
+      "line": 9,
+      "owner": "site",
+      "code": "export const getDocs = ref => browserReads.run(ref, async () => {const result=await sdkGetDocs(ref);readDiagnostic('physical-query',{site:site(),requests:1,documents:Math.max(1,result.size)});return result;}, sameQuery, site());",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firestore-reads.js",
+      "line": 10,
+      "owner": "site",
+      "code": "export const getDoc = ref => browserReads.run(ref, async () => {const result=await sdkGetDoc(ref);readDiagnostic('physical-document',{site:site(),requests:1,documents:1});return result;}, sameDocument, site());",
+      "estimatedDocumentReads": "1 per point lookup, per transaction attempt if transactional",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    },
+    {
+      "file": "lib/firestore-reads.js",
+      "line": 15,
+      "owner": "site",
+      "code": "const page=await sdkGetDocs(query(ref,limit(200),...(cursor?[startAfter(cursor)]:[])));",
+      "estimatedDocumentReads": "Q(N)=max(1,N matching documents); paginated traversals add one empty-page minimum when N is an exact positive multiple of 200",
+      "perSession": "initial relevant load, relevant navigation/action, explicit export/admin operation or wrapper invocation; not an automatic full-history timer"
+    }
+  ]
+}

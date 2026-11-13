@@ -21,6 +21,9 @@ export async function POST(request) {
   try {
     const data = await request.json();
     const { employeeId, employeeName, breakType, action } = data;
+    if (String(employeeId || '').trim().toUpperCase() === 'NTS-MGR') {
+      return Response.json({ error: 'Manager attendance requires the protected manager endpoint' }, { status: 403 });
+    }
     
     const result = await saveBreak({
       employeeId,
