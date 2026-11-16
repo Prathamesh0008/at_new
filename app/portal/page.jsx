@@ -610,7 +610,7 @@ function PortalSession() {
       const isSunday = dayOfWeek === 0;
       const isSaturday = dayOfWeek === 6;
       const managerDay = isPersonalManager ? managerDaysByDate.get(dateKey) : null;
-      const holidayName = managerDay ? ([0, 6].includes(dayOfWeek) ? "Weekly Off" : "") :
+      const holidayName = isPersonalManager ? (managerDay?.attendanceStatus === "Weekly Off" ? "Weekly Off" : "") :
         HOLIDAY_MAP[dateKey] ||
         (isSunday ? "Sunday" : "") ||
         (isSaturday && saturdayHolidaySet.has(dateKey) ? "Saturday Off" : "");
@@ -619,7 +619,7 @@ function PortalSession() {
         day,
         dateKey,
         attendanceStatus: managerDay?.attendanceStatus || "",
-        isWeekend: isSunday,
+        isWeekend: isPersonalManager ? managerDay?.attendanceStatus === "Weekly Off" : isSunday,
         holidayName,
         leaveStatus: leaveInfo?.status || "",
         leaveReason: leaveInfo?.reason || "",
@@ -639,8 +639,8 @@ function PortalSession() {
     for (let day = 1; day <= daysInMonth; day += 1) {
       const key = toDateKey(year, monthIndex, day);
       const dayOfWeek = new Date(year, monthIndex, day).getDay();
-      if (isPersonalManager && managerDaysByDate.has(key)) {
-        if ([0, 6].includes(dayOfWeek)) rows.push({ key, name: "Weekly Off", day });
+      if (isPersonalManager) {
+        if (managerDaysByDate.get(key)?.attendanceStatus === "Weekly Off") rows.push({ key, name: "Weekly Off", day });
         continue;
       }
       if (HOLIDAY_MAP[key]) {
@@ -1093,7 +1093,7 @@ function PortalSession() {
       rows: attendancePeople.map((emp) => ({
         employeeId: emp.id,
         name: emp.name,
-        cells: dates.map((date) => emp.id === "NTS-MGR" && managerDaysByDate.has(date) ? managerDaysByDate.get(date).attendanceStatus : Boolean(attendanceMap.get(`${emp.id}-${date}`))),
+        cells: dates.map((date) => emp.id === "NTS-MGR" ? (managerDaysByDate.get(date)?.attendanceStatus || "") : Boolean(attendanceMap.get(`${emp.id}-${date}`))),
       })),
     };
   }, [attendanceViewRows, attendancePeople, managerDaysByDate]);
@@ -2896,7 +2896,7 @@ function PortalSession() {
                             {r.cells.map((p, idx) => (
                               <td
                                 key={`${r.employeeId}-${idx}`}
-                                className={`border border-slate-200 px-2 py-1 ${(p === true || p === "Present" || p === "Leave") ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-500/30 dark:text-white" : p === "Weekly Off" ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-white" : "bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-white"} dark:border-slate-700`}
+                                className={`border border-slate-200 px-2 py-1 ${(p === true || p === "Present" || p === "Leave") ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-500/30 dark:text-white" : p === "Weekly Off" || p === "" ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-white" : "bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-white"} dark:border-slate-700`}
                               >
                                 {typeof p === "string" ? ({ Present: "P", Absent: "A", "Weekly Off": "WO", Leave: "L" }[p] || p) : p ? "P" : "A"}
                               </td>

@@ -1,0 +1,6 @@
+{
+  "projectId": "nova-attendance-1bf55",
+  "backup": "security-audit\\manager-activation-rules-backup-2026-11-16T11-47-31-044Z.json",
+  "candidateSha256": "45a2818a3e8dbcd6a9d0823463ad5e1cb0ddd263a02bad57d0581ca2d739a1ff",
+  "previousRuleset": "projects/nova-attendance-1bf55/rulesets/5efb7027-b29d-4917-bab1-6d88f5e8b3bd"
+}

@@ -1,0 +1,149 @@
+{
+  "projectId": "nova-attendance-1bf55",
+  "backup": "security-audit\\manager-activation-rules-backup-2026-11-16T11-47-31-044Z.json",
+  "candidateSha256": "45a2818a3e8dbcd6a9d0823463ad5e1cb0ddd263a02bad57d0581ca2d739a1ff",
+  "release": {
+    "name": "projects/nova-attendance-1bf55/releases/cloud.firestore",
+    "rulesetName": "projects/nova-attendance-1bf55/rulesets/2765fa0f-ac0e-4aea-9d96-815d8a67b290",
+    "createTime": "2025-11-18T06:55:56.974602Z",
+    "updateTime": "2026-11-16T11:50:50.020216Z"
+  },
+  "rulesetName": "projects/nova-attendance-1bf55/rulesets/2765fa0f-ac0e-4aea-9d96-815d8a67b290",
+  "readbackMatches": true,
+  "permissionChecks": [
+    {
+      "collection": "attendance",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "attendanceDaily",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "breaks",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "activities",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "leave_requests",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "leave_requests_v2",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "daily_tasks",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "daily_worksheets",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "portal_notifications",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "reimbursements",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "attendance_corrections",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "portal_settings",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "salary_slip_requests",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "salary_slips",
+      "nested": false,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "collection": "managerAttendanceHistory",
+      "nested": false,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceHistory",
+      "nested": true,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceApprovals",
+      "nested": false,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceApprovals",
+      "nested": true,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceDaily",
+      "nested": false,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceDaily",
+      "nested": true,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceState",
+      "nested": false,
+      "status": 403,
+      "expected": 403
+    },
+    {
+      "collection": "managerAttendanceState",
+      "nested": true,
+      "status": 403,
+      "expected": 403
+    }
+  ],
+  "verified": true,
+  "checkedAt": "2026-11-16T11:50:53.986Z"
+}

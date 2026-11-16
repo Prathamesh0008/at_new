@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "projectId": "demo-nts-manager-rules",
+  "endpoint": "127.0.0.1:8789",
+  "candidateSha256": "45a2818a3e8dbcd6a9d0823463ad5e1cb0ddd263a02bad57d0581ca2d739a1ff",
+  "checks": 318,
+  "employeeCollections": [
+    "attendance",
+    "attendanceDaily",
+    "breaks",
+    "activities",
+    "leave_requests",
+    "leave_requests_v2",
+    "daily_tasks",
+    "daily_worksheets",
+    "portal_notifications",
+    "reimbursements",
+    "attendance_corrections",
+    "portal_settings",
+    "salary_slip_requests",
+    "salary_slips"
+  ],
+  "protectedCollections": [
+    "managerAttendanceHistory",
+    "managerAttendanceApprovals",
+    "managerAttendanceDaily",
+    "managerAttendanceState"
+  ],
+  "actors": [
+    "anonymous",
+    "employee",
+    "manager"
+  ],
+  "testedAt": "2026-11-16T11:48:33.749Z"
+}
